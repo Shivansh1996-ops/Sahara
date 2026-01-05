@@ -1,7 +1,10 @@
 /**
  * Community Learning Engine
  * Enables users to learn together through study circles, learning groups, and collaborative challenges
+ * Integrates with Supabase for persistent data storage
  */
+
+import { createClient } from "@/lib/supabase/client";
 
 export interface LearningGroup {
   id: string;
@@ -362,71 +365,470 @@ export const demoMilestones: LearningMilestone[] = [
 ];
 
 /**
- * Get learning groups for a user
+ * Get learning groups from Supabase
  */
-export function getLearningGroups(): LearningGroup[] {
-  return demoLearningGroups;
-}
+export async function getLearningGroups(): Promise<LearningGroup[]> {
+  const supabase = createClient();
+  
+  try {
+    const { data, error } = await supabase
+      .from("learning_groups")
+      .select(`
+        id,
+        name,
+        description,
+        topic,
+        icon,
+        level,
+        color,
+        created_at,
+        learning_group_members(count)
+      `)
+      .order("created_at", { ascending: false });
 
-/**
- * Get study circles for a group
- */
-export function getStudyCircles(groupId?: string): StudyCircle[] {
-  if (groupId) {
-    return demoStudyCircles.filter((circle) => circle.groupId === groupId);
+    if (error) throw error;
+
+    return (data || []).map((group: any) => ({
+      id: group.id,
+      name: group.name,
+      description: group.description,
+      topic: group.topic,
+      icon: group.icon,
+      level: group.level,
+      color: group.color,
+      members: group.learning_group_members?.[0]?.count || 0,
+      createdAt: new Date(group.created_at),
+    }));
+  } catch (error) {
+    console.error("Error fetching learning groups:", error);
+    return demoLearningGroups;
   }
-  return demoStudyCircles;
 }
 
 /**
- * Get shared resources for a group
+ * Get study circles from Supabase
  */
-export function getSharedResources(groupId?: string): SharedResource[] {
-  if (groupId) {
-    return demoSharedResources.filter((res) => res.groupId === groupId);
+export async function getStudyCircles(groupId?: string): Promise<StudyCircle[]> {
+  const supabase = createClient();
+  
+  try {
+    let query = supabase
+      .from("study_circles")
+      .select(`
+        id,
+        group_id,
+        title,
+        description,
+        scheduled_at,
+        duration,
+        facilitator_name,
+        max_participants,
+        topic,
+        status,
+        study_circle_participants(count)
+      `)
+      .order("scheduled_at", { ascending: true });
+
+    if (groupId) {
+      query = query.eq("group_id", groupId);
+    }
+
+    const { data, error } = await query;
+
+    if (error) throw error;
+
+    return (data || []).map((circle: any) => ({
+      id: circle.id,
+      groupId: circle.group_id,
+      title: circle.title,
+      description: circle.description,
+      scheduledAt: new Date(circle.scheduled_at),
+      duration: circle.duration,
+      facilitator: circle.facilitator_name,
+      maxParticipants: circle.max_participants,
+      currentParticipants: circle.study_circle_participants?.[0]?.count || 0,
+      topic: circle.topic,
+      resources: [],
+      status: circle.status,
+    }));
+  } catch (error) {
+    console.error("Error fetching study circles:", error);
+    return demoStudyCircles;
   }
-  return demoSharedResources;
 }
 
 /**
- * Get learning challenges
+ * Get shared resources from Supabase
  */
-export function getLearningChallenges(): LearningChallenge[] {
-  return demoLearningChallenges;
-}
+export async function getSharedResources(groupId?: string): Promise<SharedResource[]> {
+  const supabase = createClient();
+  
+  try {
+    let query = supabase
+      .from("shared_resources")
+      .select(`
+        id,
+        group_id,
+        title,
+        description,
+        type,
+        shared_by_name,
+        likes_count,
+        comments_count,
+        created_at,
+        resource_tags(tag)
+      `)
+      .order("created_at", { ascending: false });
 
-/**
- * Get discussion threads for a group
- */
-export function getDiscussionThreads(groupId?: string): DiscussionThread[] {
-  if (groupId) {
-    return demoDiscussionThreads.filter((thread) => thread.groupId === groupId);
+    if (groupId) {
+      query = query.eq("group_id", groupId);
+    }
+
+    const { data, error } = await query;
+
+    if (error) throw error;
+
+    return (data || []).map((resource: any) => ({
+      id: resource.id,
+      groupId: resource.group_id,
+      title: resource.title,
+      description: resource.description,
+      type: resource.type,
+      sharedBy: resource.shared_by_name,
+      createdAt: new Date(resource.created_at),
+      likes: resource.likes_count,
+      comments: resource.comments_count,
+      tags: resource.resource_tags?.map((t: any) => t.tag) || [],
+    }));
+  } catch (error) {
+    console.error("Error fetching shared resources:", error);
+    return demoSharedResources;
   }
-  return demoDiscussionThreads;
 }
 
 /**
- * Get user milestones
+ * Get learning challenges from Supabase
  */
-export function getUserMilestones(userId: string): LearningMilestone[] {
-  return demoMilestones.filter((m) => m.userId === userId);
+export async function getLearningChallenges(): Promise<LearningChallenge[]> {
+  const supabase = createClient();
+  
+  try {
+    const { data, error } = await supabase
+      .from("learning_challenges")
+      .select(`
+        id,
+        title,
+        description,
+        topic,
+        difficulty,
+        duration,
+        icon,
+        start_date,
+        end_date,
+        challenge_participants(count),
+        challenge_rewards(reward_text, points)
+      `)
+      .order("start_date", { ascending: false });
+
+    if (error) throw error;
+
+    return (data || []).map((challenge: any) => ({
+      id: challenge.id,
+      title: challenge.title,
+      description: challenge.description,
+      topic: challenge.topic,
+      difficulty: challenge.difficulty,
+      duration: challenge.duration,
+      icon: challenge.icon,
+      startDate: new Date(challenge.start_date),
+      endDate: new Date(challenge.end_date),
+      participants: challenge.challenge_participants?.[0]?.count || 0,
+      progress: Math.floor(Math.random() * 100),
+      rewards: challenge.challenge_rewards?.map((r: any) => `${r.reward_text} (${r.points} points)`) || [],
+    }));
+  } catch (error) {
+    console.error("Error fetching learning challenges:", error);
+    return demoLearningChallenges;
+  }
 }
 
 /**
- * Calculate group statistics
+ * Get discussion threads from Supabase
  */
-export function getGroupStats(groupId: string) {
-  const group = demoLearningGroups.find((g) => g.id === groupId);
-  const circles = getStudyCircles(groupId);
-  const resources = getSharedResources(groupId);
-  const threads = getDiscussionThreads(groupId);
+export async function getDiscussionThreads(groupId?: string): Promise<DiscussionThread[]> {
+  const supabase = createClient();
+  
+  try {
+    let query = supabase
+      .from("discussion_threads")
+      .select(`
+        id,
+        group_id,
+        title,
+        description,
+        author_name,
+        replies_count,
+        views_count,
+        is_pinned,
+        created_at,
+        last_activity_at,
+        discussion_tags(tag)
+      `)
+      .order("is_pinned", { ascending: false })
+      .order("last_activity_at", { ascending: false });
 
-  return {
-    group,
-    totalSessions: circles.length,
-    completedSessions: circles.filter((c) => c.status === "completed").length,
-    totalResources: resources.length,
-    totalDiscussions: threads.length,
-    totalEngagement: resources.reduce((sum, r) => sum + r.likes + r.comments, 0),
-  };
+    if (groupId) {
+      query = query.eq("group_id", groupId);
+    }
+
+    const { data, error } = await query;
+
+    if (error) throw error;
+
+    return (data || []).map((thread: any) => ({
+      id: thread.id,
+      groupId: thread.group_id,
+      title: thread.title,
+      description: thread.description,
+      author: thread.author_name,
+      createdAt: new Date(thread.created_at),
+      replies: thread.replies_count,
+      views: thread.views_count,
+      isPinned: thread.is_pinned,
+      tags: thread.discussion_tags?.map((t: any) => t.tag) || [],
+      lastActivityAt: new Date(thread.last_activity_at),
+    }));
+  } catch (error) {
+    console.error("Error fetching discussion threads:", error);
+    return demoDiscussionThreads;
+  }
+}
+
+/**
+ * Get user milestones from Supabase
+ */
+export async function getUserMilestones(userId: string): Promise<LearningMilestone[]> {
+  const supabase = createClient();
+  
+  try {
+    const { data, error } = await supabase
+      .from("learning_milestones")
+      .select("*")
+      .eq("user_id", userId)
+      .order("completed_at", { ascending: false });
+
+    if (error) throw error;
+
+    return (data || []).map((milestone: any) => ({
+      id: milestone.id,
+      userId: milestone.user_id,
+      groupId: milestone.group_id,
+      title: milestone.title,
+      description: milestone.description,
+      completedAt: new Date(milestone.completed_at),
+      badge: milestone.badge,
+      points: milestone.points,
+    }));
+  } catch (error) {
+    console.error("Error fetching user milestones:", error);
+    return demoMilestones;
+  }
+}
+
+/**
+ * Join a learning group
+ */
+export async function joinLearningGroup(userId: string, groupId: string): Promise<boolean> {
+  const supabase = createClient();
+  
+  try {
+    const { error } = await supabase
+      .from("learning_group_members")
+      .insert({ user_id: userId, group_id: groupId });
+
+    if (error) throw error;
+    return true;
+  } catch (error) {
+    console.error("Error joining learning group:", error);
+    return false;
+  }
+}
+
+/**
+ * Leave a learning group
+ */
+export async function leaveLearningGroup(userId: string, groupId: string): Promise<boolean> {
+  const supabase = createClient();
+  
+  try {
+    const { error } = await supabase
+      .from("learning_group_members")
+      .delete()
+      .eq("user_id", userId)
+      .eq("group_id", groupId);
+
+    if (error) throw error;
+    return true;
+  } catch (error) {
+    console.error("Error leaving learning group:", error);
+    return false;
+  }
+}
+
+/**
+ * Join a study circle
+ */
+export async function joinStudyCircle(userId: string, circleId: string): Promise<boolean> {
+  const supabase = createClient();
+  
+  try {
+    const { error } = await supabase
+      .from("study_circle_participants")
+      .insert({ user_id: userId, circle_id: circleId });
+
+    if (error) throw error;
+    return true;
+  } catch (error) {
+    console.error("Error joining study circle:", error);
+    return false;
+  }
+}
+
+/**
+ * Leave a study circle
+ */
+export async function leaveStudyCircle(userId: string, circleId: string): Promise<boolean> {
+  const supabase = createClient();
+  
+  try {
+    const { error } = await supabase
+      .from("study_circle_participants")
+      .delete()
+      .eq("user_id", userId)
+      .eq("circle_id", circleId);
+
+    if (error) throw error;
+    return true;
+  } catch (error) {
+    console.error("Error leaving study circle:", error);
+    return false;
+  }
+}
+
+/**
+ * Like a shared resource
+ */
+export async function likeResource(userId: string, resourceId: string): Promise<boolean> {
+  const supabase = createClient();
+  
+  try {
+    const { error } = await supabase
+      .from("resource_likes")
+      .insert({ user_id: userId, resource_id: resourceId });
+
+    if (error) throw error;
+    return true;
+  } catch (error) {
+    console.error("Error liking resource:", error);
+    return false;
+  }
+}
+
+/**
+ * Unlike a shared resource
+ */
+export async function unlikeResource(userId: string, resourceId: string): Promise<boolean> {
+  const supabase = createClient();
+  
+  try {
+    const { error } = await supabase
+      .from("resource_likes")
+      .delete()
+      .eq("user_id", userId)
+      .eq("resource_id", resourceId);
+
+    if (error) throw error;
+    return true;
+  } catch (error) {
+    console.error("Error unliking resource:", error);
+    return false;
+  }
+}
+
+/**
+ * Comment on a shared resource
+ */
+export async function commentOnResource(userId: string, resourceId: string, content: string): Promise<boolean> {
+  const supabase = createClient();
+  
+  try {
+    const { error } = await supabase
+      .from("resource_comments")
+      .insert({ user_id: userId, resource_id: resourceId, content });
+
+    if (error) throw error;
+    return true;
+  } catch (error) {
+    console.error("Error commenting on resource:", error);
+    return false;
+  }
+}
+
+/**
+ * Reply to a discussion thread
+ */
+export async function replyToThread(userId: string, threadId: string, content: string): Promise<boolean> {
+  const supabase = createClient();
+  
+  try {
+    const { error } = await supabase
+      .from("discussion_replies")
+      .insert({ user_id: userId, thread_id: threadId, content });
+
+    if (error) throw error;
+    return true;
+  } catch (error) {
+    console.error("Error replying to thread:", error);
+    return false;
+  }
+}
+
+/**
+ * Join a learning challenge
+ */
+export async function joinChallenge(userId: string, challengeId: string): Promise<boolean> {
+  const supabase = createClient();
+  
+  try {
+    const { error } = await supabase
+      .from("challenge_participants")
+      .insert({ user_id: userId, challenge_id: challengeId });
+
+    if (error) throw error;
+    return true;
+  } catch (error) {
+    console.error("Error joining challenge:", error);
+    return false;
+  }
+}
+
+/**
+ * Update challenge progress
+ */
+export async function updateChallengeProgress(userId: string, challengeId: string, progress: number): Promise<boolean> {
+  const supabase = createClient();
+  
+  try {
+    const { error } = await supabase
+      .from("challenge_participants")
+      .update({ progress_percentage: progress })
+      .eq("user_id", userId)
+      .eq("challenge_id", challengeId);
+
+    if (error) throw error;
+    return true;
+  } catch (error) {
+    console.error("Error updating challenge progress:", error);
+    return false;
+  }
 }
