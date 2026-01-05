@@ -20,6 +20,10 @@ export const metadata: Metadata = {
   description: "Your calm space for mental wellness. Connect with your AI companion and grow together.",
   keywords: ["mental wellness", "AI companion", "mindfulness", "emotional support", "self-care"],
   authors: [{ name: "Sahara" }],
+  icons: {
+    icon: "/logo.png",
+    apple: "/logo.png",
+  },
   openGraph: {
     title: "Sahara - Mental Wellness Companion",
     description: "Your calm space for mental wellness. Connect with your AI companion and grow together.",
