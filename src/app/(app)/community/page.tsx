@@ -1,465 +1,467 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Send, Users, MessageSquare, Sparkles, Heart, Globe } from "lucide-react";
-import { useAuthStore } from "@/stores/auth-store";
-import { useFeatureGateStore } from "@/stores/feature-gate-store";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Users, Heart, MessageCircle, Plus, ChevronRight, Palette, Music, Camera, Dumbbell, Send, X, Check, Share2 } from "lucide-react";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { Avatar } from "@/components/ui/avatar";
-import { Modal } from "@/components/ui/modal";
-import { Loading } from "@/components/ui/loading";
-import { ConnectionGraph } from "@/components/community/connection-graph";
-import { createClient, isDemoMode } from "@/lib/supabase/client";
-import { formatRelativeTime, SUPPORTIVE_EMOJIS, cn } from "@/lib/utils";
-import type { CommunityPost, SupportiveEmoji, PeerNode, PeerConnection } from "@/types";
+import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/stores/auth-store";
 
-// Demo data for connection graph
-function getDemoGraphData(): { nodes: PeerNode[]; connections: PeerConnection[] } {
-  const nodes: PeerNode[] = [
-    { id: "demo-1", anonymousName: "GentleBreeze", avatarSeed: "breeze", connectionCount: 3 },
-    { id: "demo-2", anonymousName: "CalmWaters", avatarSeed: "waters", connectionCount: 2 },
-    { id: "demo-3", anonymousName: "SunnyMeadow", avatarSeed: "meadow", connectionCount: 4 },
-    { id: "demo-4", anonymousName: "QuietForest", avatarSeed: "forest", connectionCount: 1 },
-    { id: "demo-5", anonymousName: "WarmSunrise", avatarSeed: "sunrise", connectionCount: 2 },
-    { id: "demo-6", anonymousName: "PeacefulRiver", avatarSeed: "river", connectionCount: 3 },
-  ];
-  const connections: PeerConnection[] = [
-    { id: "c1", fromUserId: "demo-1", toUserId: "demo-2", createdAt: new Date() },
-    { id: "c2", fromUserId: "demo-1", toUserId: "demo-3", createdAt: new Date() },
-    { id: "c3", fromUserId: "demo-2", toUserId: "demo-5", createdAt: new Date() },
-    { id: "c4", fromUserId: "demo-3", toUserId: "demo-4", createdAt: new Date() },
-    { id: "c5", fromUserId: "demo-3", toUserId: "demo-6", createdAt: new Date() },
-    { id: "c6", fromUserId: "demo-5", toUserId: "demo-6", createdAt: new Date() },
-  ];
-  return { nodes, connections };
+interface Post {
+  id: string;
+  author: string;
+  content: string;
+  likes: number;
+  time: string;
+  avatar: string;
+  replies: { author: string; content: string; avatar: string }[];
 }
+
+interface Group {
+  id: string;
+  name: string;
+  members: number;
+  desc: string;
+  joined: boolean;
+  image: string;
+}
+
+interface Hobby {
+  id: string;
+  name: string;
+  members: number;
+  icon: typeof Palette;
+  image: string;
+  description: string;
+  skills: string[];
+}
+
+const initialHobbies: Hobby[] = [
+  { id: "art", name: "Art & Drawing", members: 234, icon: Palette, image: "https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=400&h=300&fit=crop", description: "Express yourself through visual art. From sketching to digital painting.", skills: ["Sketching", "Watercolor", "Digital Art", "Portrait Drawing"] },
+  { id: "music", name: "Music & Sound", members: 189, icon: Music, image: "https://images.unsplash.com/photo-1511379938547-c1f69419868d?w=400&h=300&fit=crop", description: "Discover the joy of making music. Learn instruments, production, or just listen.", skills: ["Guitar", "Piano", "Singing", "Music Production"] },
+  { id: "photography", name: "Photography", members: 156, icon: Camera, image: "https://images.unsplash.com/photo-1502920917128-1aa500764cbd?w=400&h=300&fit=crop", description: "Capture moments and tell stories through your lens.", skills: ["Portrait", "Landscape", "Street Photography", "Editing"] },
+  { id: "fitness", name: "Fitness & Yoga", members: 312, icon: Dumbbell, image: "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?w=400&h=300&fit=crop", description: "Build strength, flexibility, and mindfulness through movement.", skills: ["Yoga", "Meditation", "Strength Training", "Running"] },
+];
+
+const initialGroups: Group[] = [
+  { id: "1", name: "Mindfulness Beginners", members: 45, desc: "Learn meditation basics together", joined: false, image: "https://images.unsplash.com/photo-1506126613408-eca07ce68773?w=100&h=100&fit=crop" },
+  { id: "2", name: "Anxiety Support", members: 78, desc: "Share experiences and coping strategies", joined: false, image: "https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=100&h=100&fit=crop" },
+  { id: "3", name: "Creative Expression", members: 32, desc: "Express yourself through art", joined: false, image: "https://images.unsplash.com/photo-1460661419201-fd4cecdf8a8b?w=100&h=100&fit=crop" },
+];
+
+const initialPosts: Post[] = [
+  { id: "1", author: "Sarah M.", content: "Just completed my first week of daily meditation! Feeling so much calmer. 🧘‍♀️", likes: 24, time: "2h ago", avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop", replies: [] },
+  { id: "2", author: "James K.", content: "Discovered painting as stress relief. Anyone else into art therapy? 🎨", likes: 18, time: "5h ago", avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop", replies: [] },
+  { id: "3", author: "Emily R.", content: "Grateful for this community. You all inspire me every day! 💜", likes: 31, time: "1d ago", avatar: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&h=100&fit=crop", replies: [] },
+];
 
 export default function CommunityPage() {
-  const { user, profile, isDemoMode: isAuthDemoMode } = useAuthStore();
-  const { isFullyUnlocked } = useFeatureGateStore();
-  const [posts, setPosts] = useState<CommunityPost[]>([]);
-  const [peerNodes, setPeerNodes] = useState<PeerNode[]>([]);
-  const [peerConnections, setPeerConnections] = useState<PeerConnection[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [showNewPostModal, setShowNewPostModal] = useState(false);
+  const { profile } = useAuthStore();
+  const [activeTab, setActiveTab] = useState<"feed" | "hobbies" | "groups">("feed");
+  const [posts, setPosts] = useState<Post[]>(initialPosts);
+  const [groups, setGroups] = useState<Group[]>(initialGroups);
+  const [likedPosts, setLikedPosts] = useState<string[]>([]);
   const [newPostContent, setNewPostContent] = useState("");
-  const [isPosting, setIsPosting] = useState(false);
-  const [activeTab, setActiveTab] = useState<"graph" | "posts">("graph");
+  const [replyingTo, setReplyingTo] = useState<string | null>(null);
+  const [replyContent, setReplyContent] = useState("");
+  const [selectedHobby, setSelectedHobby] = useState<Hobby | null>(null);
+  const [showCreateGroup, setShowCreateGroup] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
+  const [newGroupDesc, setNewGroupDesc] = useState("");
+  const [notification, setNotification] = useState<string | null>(null);
 
-  const fetchPosts = useCallback(async () => {
-    // Demo mode
-    if (isDemoMode() || isAuthDemoMode) {
-      const demoData = getDemoGraphData();
-      setPeerNodes(demoData.nodes);
-      setPeerConnections(demoData.connections);
-      setPosts([
-        {
-          id: "demo-post-1",
-          authorId: "demo-1",
-          content: "Remember: every small step counts. You're doing amazing! 🌱",
-          createdAt: new Date(Date.now() - 3600000),
-          author: { anonymousName: "GentleBreeze" },
-          reactions: [{ id: "r1", userId: "demo-2", emoji: "💚", postId: "demo-post-1", createdAt: new Date() }],
-        },
-        {
-          id: "demo-post-2",
-          authorId: "demo-3",
-          content: "Sending positive vibes to everyone here. We're all in this together. ✨",
-          createdAt: new Date(Date.now() - 7200000),
-          author: { anonymousName: "SunnyMeadow" },
-          reactions: [
-            { id: "r2", userId: "demo-1", emoji: "🤗", postId: "demo-post-2", createdAt: new Date() },
-            { id: "r3", userId: "demo-4", emoji: "💚", postId: "demo-post-2", createdAt: new Date() },
-          ],
-        },
-      ]);
-      setIsLoading(false);
-      return;
-    }
-
-    const supabase = createClient();
-
-    try {
-      const { data, error } = await supabase
-        .from("community_posts")
-        .select(`
-          *,
-          author:user_profiles!community_posts_author_id_fkey(anonymous_name),
-          reactions:post_reactions(*)
-        `)
-        .order("created_at", { ascending: false })
-        .limit(50);
-
-      if (error) throw error;
-
-      setPosts(
-        data.map((post) => ({
-          id: post.id,
-          authorId: post.author_id,
-          content: post.content,
-          createdAt: new Date(post.created_at),
-          author: post.author,
-          reactions: post.reactions,
-        }))
-      );
-
-      // Fetch peer nodes and connections
-      const { data: profilesData } = await supabase
-        .from("user_profiles")
-        .select("user_id, anonymous_name")
-        .not("anonymous_name", "is", null);
-
-      const { data: connectionsData } = await supabase
-        .from("peer_connections")
-        .select("*");
-
-      if (profilesData) {
-        // Count connections per user
-        const connectionCounts: Record<string, number> = {};
-        connectionsData?.forEach((c) => {
-          connectionCounts[c.from_user_id] = (connectionCounts[c.from_user_id] || 0) + 1;
-          connectionCounts[c.to_user_id] = (connectionCounts[c.to_user_id] || 0) + 1;
-        });
-
-        setPeerNodes(
-          profilesData.map((p) => ({
-            id: p.user_id,
-            anonymousName: p.anonymous_name || "Anonymous",
-            avatarSeed: p.anonymous_name || p.user_id,
-            connectionCount: connectionCounts[p.user_id] || 0,
-          }))
-        );
-      }
-
-      if (connectionsData) {
-        setPeerConnections(
-          connectionsData.map((c) => ({
-            id: c.id,
-            fromUserId: c.from_user_id,
-            toUserId: c.to_user_id,
-            createdAt: new Date(c.created_at),
-          }))
-        );
-      }
-    } catch (error) {
-      console.error("Error fetching posts:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    // In demo mode, bypass unlock check
-    if (isFullyUnlocked || isDemoMode() || isAuthDemoMode) {
-      fetchPosts();
-    } else {
-      setIsLoading(false);
-    }
-  }, [isFullyUnlocked, fetchPosts, isAuthDemoMode]);
-
-  // Bypass unlock check for demo mode
-  const showCommunity = isFullyUnlocked || isDemoMode() || isAuthDemoMode;
-
-  const handleCreatePost = async () => {
-    if (!user || !newPostContent.trim()) return;
-
-    setIsPosting(true);
-    const supabase = createClient();
-
-    try {
-      const { error } = await supabase.from("community_posts").insert({
-        author_id: user.id,
-        content: newPostContent.trim(),
-      });
-
-      if (error) throw error;
-
-      setNewPostContent("");
-      setShowNewPostModal(false);
-      fetchPosts();
-    } catch (error) {
-      console.error("Error creating post:", error);
-    } finally {
-      setIsPosting(false);
-    }
+  const showNotification = (message: string) => {
+    setNotification(message);
+    setTimeout(() => setNotification(null), 3000);
   };
 
-  const handleReaction = async (postId: string, emoji: SupportiveEmoji) => {
-    if (!user) return;
-
-    const supabase = createClient();
-
-    try {
-      // Check if user already reacted
-      const { data: existingReaction } = await supabase
-        .from("post_reactions")
-        .select("id")
-        .eq("post_id", postId)
-        .eq("user_id", user.id)
-        .single();
-
-      if (existingReaction) {
-        // Remove reaction
-        await supabase
-          .from("post_reactions")
-          .delete()
-          .eq("id", existingReaction.id);
-      } else {
-        // Add reaction
-        await supabase.from("post_reactions").insert({
-          post_id: postId,
-          user_id: user.id,
-          emoji,
-        });
-      }
-
-      fetchPosts();
-    } catch (error) {
-      console.error("Error toggling reaction:", error);
-    }
+  const handleCreatePost = () => {
+    if (!newPostContent.trim()) return;
+    
+    const newPost: Post = {
+      id: Date.now().toString(),
+      author: profile?.name || "You",
+      content: newPostContent,
+      likes: 0,
+      time: "Just now",
+      avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop",
+      replies: [],
+    };
+    
+    setPosts([newPost, ...posts]);
+    setNewPostContent("");
+    showNotification("Post shared successfully! 🎉");
   };
 
-  if (!showCommunity) {
-    return (
-      <div className="flex items-center justify-center min-h-screen p-4">
-        <Card className="max-w-md text-center">
-          <CardContent className="pt-6">
-            <p className="text-sage-600">
-              Complete 10 chat sessions to unlock the community.
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+  const handleLikePost = (postId: string) => {
+    setLikedPosts(prev => 
+      prev.includes(postId) 
+        ? prev.filter(id => id !== postId) 
+        : [...prev, postId]
     );
-  }
+  };
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loading size="lg" text="Loading community..." />
-      </div>
-    );
-  }
+  const handleReply = (postId: string) => {
+    if (!replyContent.trim()) return;
+    
+    setPosts(posts.map(post => {
+      if (post.id === postId) {
+        return {
+          ...post,
+          replies: [...post.replies, {
+            author: profile?.name || "You",
+            content: replyContent,
+            avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop",
+          }]
+        };
+      }
+      return post;
+    }));
+    
+    setReplyContent("");
+    setReplyingTo(null);
+    showNotification("Reply posted! 💬");
+  };
+
+  const handleJoinGroup = (groupId: string) => {
+    setGroups(groups.map(g => 
+      g.id === groupId ? { ...g, joined: !g.joined, members: g.joined ? g.members - 1 : g.members + 1 } : g
+    ));
+    const group = groups.find(g => g.id === groupId);
+    showNotification(group?.joined ? `Left ${group.name}` : `Joined ${group?.name}! 🎊`);
+  };
+
+  const handleCreateGroup = () => {
+    if (!newGroupName.trim()) return;
+    
+    const newGroup: Group = {
+      id: Date.now().toString(),
+      name: newGroupName,
+      members: 1,
+      desc: newGroupDesc || "A new community group",
+      joined: true,
+      image: "https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=100&h=100&fit=crop",
+    };
+    
+    setGroups([newGroup, ...groups]);
+    setNewGroupName("");
+    setNewGroupDesc("");
+    setShowCreateGroup(false);
+    showNotification("Group created successfully! 🚀");
+  };
+
+  const handleJoinHobby = (hobby: Hobby) => {
+    setSelectedHobby(null);
+    showNotification(`Joined ${hobby.name}! Welcome to the community! 🎨`);
+  };
 
   return (
-    <div className="p-4 space-y-4">
-      {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="flex items-center justify-between"
-      >
-        <div>
-          <h1 className="text-2xl font-bold text-sage-800">Community</h1>
-          <p className="text-sage-600">Share encouragement, spread kindness</p>
-        </div>
-      </motion.div>
-
-      {/* Tab Switcher */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.05 }}
-        className="flex gap-2"
-      >
-        <Button
-          variant={activeTab === "graph" ? "default" : "ghost"}
-          size="sm"
-          onClick={() => setActiveTab("graph")}
-          className="flex-1"
-        >
-          <Users className="w-4 h-4 mr-2" />
-          Connections
-        </Button>
-        <Button
-          variant={activeTab === "posts" ? "default" : "ghost"}
-          size="sm"
-          onClick={() => setActiveTab("posts")}
-          className="flex-1"
-        >
-          <MessageSquare className="w-4 h-4 mr-2" />
-          Posts
-        </Button>
-      </motion.div>
-
-      {/* Connection Graph */}
-      {activeTab === "graph" && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-        >
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-sage-600">
-                Community Network
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ConnectionGraph
-                nodes={peerNodes}
-                connections={peerConnections}
-                currentUserId={user?.id}
-                onNodeClick={(node) => console.log("Clicked node:", node)}
-              />
-              <p className="text-xs text-sage-500 mt-2 text-center">
-                Drag nodes to explore • Click to view profile
-              </p>
-            </CardContent>
-          </Card>
-        </motion.div>
-      )}
-
-      {/* Posts Tab */}
-      {activeTab === "posts" && (
-        <>
-          {/* New Post Button */}
+    <div className="min-h-screen pb-24 bg-gradient-to-b from-[var(--bg)] to-[var(--card)]">
+      {/* Notification */}
+      <AnimatePresence>
+        {notification && (
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
+            initial={{ opacity: 0, y: -50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -50, scale: 0.9 }}
+            className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-gradient-to-r from-[var(--primary)] to-[var(--primary-light)] text-white px-6 py-3 rounded-full shadow-lg shadow-[var(--primary)]/20"
           >
-            <Button
-              variant="soft"
-              className="w-full justify-start"
-              onClick={() => setShowNewPostModal(true)}
-            >
-              <Plus className="w-5 h-5 mr-2" />
-              Share something positive...
-            </Button>
+            {notification}
           </motion.div>
+        )}
+      </AnimatePresence>
 
-          {/* Posts Feed */}
-          <div className="space-y-4">
-            <AnimatePresence>
-              {posts.map((post, index) => (
-                <PostCard
-                  key={post.id}
-                  post={post}
-                  currentUserId={user?.id}
-                  onReaction={handleReaction}
-                  delay={index * 0.05}
-                />
-              ))}
-            </AnimatePresence>
-
-            {posts.length === 0 && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="text-center py-12"
-              >
-                <p className="text-sage-500">
-                  Be the first to share something positive!
-                </p>
-              </motion.div>
-            )}
-          </div>
-        </>
-      )}
-
-      {/* New Post Modal */}
-      <Modal
-        isOpen={showNewPostModal}
-        onClose={() => setShowNewPostModal(false)}
-        title="Share Encouragement"
-        description="Spread positivity in the community"
-      >
-        <div className="space-y-4">
-          <Textarea
-            value={newPostContent}
-            onChange={(e) => setNewPostContent(e.target.value)}
-            placeholder="Share something uplifting, encouraging, or kind..."
-            className="min-h-[120px]"
-            maxLength={500}
-          />
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-sage-500">
-              {newPostContent.length}/500
-            </span>
-            <Button
-              onClick={handleCreatePost}
-              disabled={!newPostContent.trim()}
-              isLoading={isPosting}
+      {/* Hobby Detail Modal */}
+      <AnimatePresence>
+        {selectedHobby && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 dark:bg-black/70 backdrop-blur-sm p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.9 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.9 }}
+              className="bg-[var(--card)] rounded-2xl max-w-md w-full shadow-2xl overflow-hidden"
             >
-              <Send className="w-4 h-4 mr-2" />
-              Share
-            </Button>
-          </div>
-          <p className="text-xs text-sage-500">
-            Posting as {profile?.anonymousName || "Anonymous"}
-          </p>
-        </div>
-      </Modal>
-    </div>
-  );
-}
+              <div className="relative h-48">
+                <Image src={selectedHobby.image} alt={selectedHobby.name} fill className="object-cover" />
+                <button onClick={() => setSelectedHobby(null)} className="absolute top-4 right-4 w-8 h-8 bg-black/50 rounded-full flex items-center justify-center">
+                  <X className="w-4 h-4 text-white" />
+                </button>
+                <div className="absolute bottom-4 left-4 w-12 h-12 rounded-xl bg-[var(--primary)] flex items-center justify-center">
+                  <selectedHobby.icon className="w-6 h-6 text-white" />
+                </div>
+              </div>
+              <div className="p-6">
+                <h3 className="text-xl font-semibold text-[var(--text)] mb-2">{selectedHobby.name}</h3>
+                <p className="text-[var(--text-muted)] mb-4">{selectedHobby.description}</p>
+                <p className="text-sm text-[var(--text-light)] mb-3">{selectedHobby.members} members</p>
+                <div className="flex flex-wrap gap-2 mb-6">
+                  {selectedHobby.skills.map(skill => (
+                    <span key={skill} className="px-3 py-1 bg-[var(--bg-alt)] text-[var(--primary)] text-sm rounded-full">{skill}</span>
+                  ))}
+                </div>
+                <Button onClick={() => handleJoinHobby(selectedHobby)} className="w-full bg-[var(--primary)] text-white rounded-xl h-12">
+                  Join Community
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-interface PostCardProps {
-  post: CommunityPost;
-  currentUserId?: string;
-  onReaction: (postId: string, emoji: SupportiveEmoji) => void;
-  delay: number;
-}
+      {/* Create Group Modal */}
+      <AnimatePresence>
+        {showCreateGroup && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 dark:bg-black/70 backdrop-blur-sm p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.9 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.9 }}
+              className="bg-[var(--card)] rounded-2xl max-w-md w-full shadow-2xl p-6"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-semibold text-[var(--text)]">Create New Group</h3>
+                <button onClick={() => setShowCreateGroup(false)}><X className="w-5 h-5 text-[var(--text-light)]" /></button>
+              </div>
+              <input
+                type="text"
+                placeholder="Group name..."
+                value={newGroupName}
+                onChange={(e) => setNewGroupName(e.target.value)}
+                className="w-full px-4 py-3 rounded-xl bg-[var(--bg-alt)] border border-[var(--border)] text-[var(--text)] mb-3 focus:outline-none focus:border-[var(--primary)]"
+              />
+              <textarea
+                placeholder="Description (optional)..."
+                value={newGroupDesc}
+                onChange={(e) => setNewGroupDesc(e.target.value)}
+                className="w-full px-4 py-3 rounded-xl bg-[var(--bg-alt)] border border-[var(--border)] text-[var(--text)] mb-4 h-24 resize-none focus:outline-none focus:border-[var(--primary)]"
+              />
+              <Button onClick={handleCreateGroup} disabled={!newGroupName.trim()} className="w-full bg-[var(--primary)] text-white rounded-xl h-12">
+                Create Group
+              </Button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-function PostCard({ post, currentUserId, onReaction, delay }: PostCardProps) {
-  const userReaction = post.reactions?.find((r) => r.userId === currentUserId);
-
-  // Count reactions by emoji
-  const reactionCounts = SUPPORTIVE_EMOJIS.reduce((acc, emoji) => {
-    acc[emoji] = post.reactions?.filter((r) => r.emoji === emoji).length || 0;
-    return acc;
-  }, {} as Record<SupportiveEmoji, number>);
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      transition={{ delay }}
-    >
-      <Card>
-        <CardHeader className="pb-2">
-          <div className="flex items-center gap-3">
-            <Avatar seed={post.author?.anonymousName || "user"} size="md" />
+      <div className="max-w-2xl mx-auto px-4">
+        {/* Header */}
+        <motion.div 
+          initial={{ opacity: 0, y: -10 }} 
+          animate={{ opacity: 1, y: 0 }} 
+          className="pt-6 pb-5"
+        >
+          <div className="flex items-center gap-4 mb-1">
+            <motion.div 
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ type: "spring", bounce: 0.5 }}
+              className="w-14 h-14 rounded-2xl flex items-center justify-center bg-gradient-to-br from-[var(--primary)] to-[var(--primary-light)] shadow-lg"
+            >
+              <Users className="w-7 h-7 text-white" />
+            </motion.div>
             <div>
-              <p className="font-medium text-sage-800">
-                {post.author?.anonymousName || "Anonymous"}
-              </p>
-              <p className="text-xs text-sage-500">
-                {formatRelativeTime(post.createdAt)}
-              </p>
+              <h1 className="text-2xl font-bold text-[var(--text)]">Community</h1>
+              <p className="text-sm text-[var(--text-muted)]">Connect and discover hobbies</p>
             </div>
           </div>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sage-700 whitespace-pre-wrap">{post.content}</p>
+        </motion.div>
 
-          {/* Reactions */}
-          <div className="flex items-center gap-2 mt-4 flex-wrap">
-            {SUPPORTIVE_EMOJIS.map((emoji) => (
-              <button
-                key={emoji}
-                onClick={() => onReaction(post.id, emoji)}
-                className={cn(
-                  "flex items-center gap-1 px-2 py-1 rounded-full text-sm transition-colors",
-                  userReaction?.emoji === emoji
-                    ? "bg-sage-200 text-sage-800"
-                    : "bg-beige-100 text-sage-600 hover:bg-beige-200"
-                )}
-              >
-                <span>{emoji}</span>
-                {reactionCounts[emoji] > 0 && (
-                  <span className="text-xs">{reactionCounts[emoji]}</span>
-                )}
-              </button>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-    </motion.div>
+        {/* Tabs */}
+        <div className="flex gap-1 p-1.5 rounded-2xl bg-[var(--card)] border border-[var(--border)] mb-5 shadow-sm">
+          {[
+            { id: "feed", label: "Feed", icon: MessageCircle },
+            { id: "hobbies", label: "Hobbies", icon: Palette },
+            { id: "groups", label: "Groups", icon: Users },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as typeof activeTab)}
+              className={cn(
+                "flex-1 py-2.5 px-3 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2",
+                activeTab === tab.id 
+                  ? "bg-gradient-to-r from-[var(--primary)] to-[var(--primary-light)] text-white shadow-md shadow-[var(--primary)]/20" 
+                  : "text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-alt)]"
+              )}
+            >
+              <tab.icon className="w-4 h-4" />
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Content */}
+        <AnimatePresence mode="wait">
+          {activeTab === "feed" && (
+            <motion.div key="feed" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-4">
+              {/* New Post */}
+              <div className="bg-[var(--card)] rounded-xl p-4 border border-[var(--border)]">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-full bg-[var(--primary)] flex items-center justify-center text-white text-lg flex-shrink-0">
+                    {profile?.name?.[0]?.toUpperCase() || "😊"}
+                  </div>
+                  <div className="flex-1">
+                    <textarea
+                      placeholder="Share something with the community..."
+                      value={newPostContent}
+                      onChange={(e) => setNewPostContent(e.target.value)}
+                      className="w-full bg-[var(--bg-alt)] rounded-xl px-4 py-3 text-sm border border-[var(--border)] focus:outline-none focus:border-[var(--primary)] resize-none h-20 text-[var(--text)]"
+                    />
+                    <div className="flex justify-end mt-2">
+                      <Button onClick={handleCreatePost} disabled={!newPostContent.trim()} className="bg-[var(--primary)] text-white rounded-full px-5">
+                        <Send className="w-4 h-4 mr-2" /> Share
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Posts */}
+              {posts.map((post, i) => (
+                <motion.div
+                  key={post.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.1 }}
+                  className="bg-[var(--card)] rounded-xl p-5 border border-[var(--border)]"
+                >
+                  <div className="flex items-start gap-3 mb-3">
+                    <div className="w-10 h-10 rounded-full overflow-hidden relative flex-shrink-0">
+                      <Image src={post.avatar} alt={post.author} fill className="object-cover" />
+                    </div>
+                    <div className="flex-1">
+                      <span className="font-semibold text-[var(--text)]">{post.author}</span>
+                      <span className="text-[var(--text-light)] text-sm ml-2">{post.time}</span>
+                    </div>
+                  </div>
+                  <p className="text-[var(--text-muted)] mb-4 leading-relaxed">{post.content}</p>
+                  
+                  <div className="flex items-center gap-6 mb-3">
+                    <button onClick={() => handleLikePost(post.id)} className={cn("flex items-center gap-2 transition-colors", likedPosts.includes(post.id) ? "text-[var(--accent)]" : "text-[var(--text-light)] hover:text-[var(--accent)]")}>
+                      <Heart className={cn("w-5 h-5", likedPosts.includes(post.id) && "fill-current")} />
+                      <span className="text-sm font-medium">{post.likes + (likedPosts.includes(post.id) ? 1 : 0)}</span>
+                    </button>
+                    <button onClick={() => setReplyingTo(replyingTo === post.id ? null : post.id)} className="flex items-center gap-2 text-[var(--text-light)] hover:text-[var(--primary)] transition-colors">
+                      <MessageCircle className="w-5 h-5" />
+                      <span className="text-sm font-medium">Reply{post.replies.length > 0 && ` (${post.replies.length})`}</span>
+                    </button>
+                  </div>
+
+                  {/* Replies */}
+                  {post.replies.length > 0 && (
+                    <div className="ml-6 pl-4 border-l-2 border-[var(--border)] space-y-3 mb-3">
+                      {post.replies.map((reply, idx) => (
+                        <div key={idx} className="flex items-start gap-2">
+                          <div className="w-6 h-6 rounded-full overflow-hidden relative flex-shrink-0">
+                            <Image src={reply.avatar} alt={reply.author} fill className="object-cover" />
+                          </div>
+                          <div>
+                            <span className="text-sm font-medium text-[var(--text)]">{reply.author}</span>
+                            <p className="text-sm text-[var(--text-muted)]">{reply.content}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Reply Input */}
+                  <AnimatePresence>
+                    {replyingTo === post.id && (
+                      <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="flex items-center gap-2 mt-3 pt-3 border-t border-[var(--border)]">
+                        <input
+                          type="text"
+                          placeholder="Write a reply..."
+                          value={replyContent}
+                          onChange={(e) => setReplyContent(e.target.value)}
+                          className="flex-1 px-4 py-2 rounded-full bg-[var(--bg-alt)] border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--primary)] text-[var(--text)]"
+                          onKeyDown={(e) => e.key === "Enter" && handleReply(post.id)}
+                        />
+                        <Button onClick={() => handleReply(post.id)} disabled={!replyContent.trim()} size="sm" className="bg-[var(--primary)] text-white rounded-full">
+                          <Send className="w-4 h-4" />
+                        </Button>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
+              ))}
+            </motion.div>
+          )}
+
+          {activeTab === "hobbies" && (
+            <motion.div key="hobbies" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-6">
+              <div className="grid sm:grid-cols-2 gap-4">
+                {initialHobbies.map((hobby, i) => (
+                  <motion.div
+                    key={hobby.id}
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: i * 0.1 }}
+                    onClick={() => setSelectedHobby(hobby)}
+                    className="bg-[var(--card)] rounded-xl overflow-hidden border border-[var(--border)] hover:shadow-lg transition-all cursor-pointer group"
+                  >
+                    <div className="relative h-32 overflow-hidden">
+                      <Image src={hobby.image} alt={hobby.name} fill className="object-cover group-hover:scale-105 transition-transform duration-500" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
+                      <div className="absolute bottom-3 left-3 w-10 h-10 rounded-lg bg-[var(--primary)] flex items-center justify-center">
+                        <hobby.icon className="w-5 h-5 text-white" />
+                      </div>
+                    </div>
+                    <div className="p-4">
+                      <h4 className="font-semibold text-[var(--text)] mb-1">{hobby.name}</h4>
+                      <p className="text-sm text-[var(--text-light)]">{hobby.members} members</p>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            </motion.div>
+          )}
+
+          {activeTab === "groups" && (
+            <motion.div key="groups" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-4">
+              {groups.map((group, i) => (
+                <motion.div
+                  key={group.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.1 }}
+                  className="bg-[var(--card)] rounded-xl p-5 border border-[var(--border)]"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-14 h-14 rounded-xl overflow-hidden relative flex-shrink-0">
+                      <Image src={group.image} alt={group.name} fill className="object-cover" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h4 className="font-semibold text-[var(--text)]">{group.name}</h4>
+                        {group.joined && <span className="text-xs bg-[var(--primary)] text-white px-2 py-0.5 rounded-full">Joined</span>}
+                      </div>
+                      <p className="text-sm text-[var(--text-muted)] mb-1">{group.desc}</p>
+                      <p className="text-xs text-[var(--text-light)]">{group.members} members</p>
+                    </div>
+                    <Button onClick={() => handleJoinGroup(group.id)} className={cn("rounded-full", group.joined ? "bg-[var(--bg-alt)] text-[var(--primary)]" : "bg-[var(--primary)] text-white")}>
+                      {group.joined ? "Leave" : "Join"}
+                    </Button>
+                  </div>
+                </motion.div>
+              ))}
+
+              <Button onClick={() => setShowCreateGroup(true)} className="w-full bg-[var(--card)] text-[var(--primary)] hover:bg-[var(--bg-alt)] rounded-xl h-12 border-2 border-dashed border-[var(--primary)]/30">
+                <Plus className="w-5 h-5 mr-2" /> Create New Group
+              </Button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </div>
   );
 }

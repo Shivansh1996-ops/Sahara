@@ -2,7 +2,8 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
-import { Sparkles, Heart, Users, LayoutDashboard, Star, Zap, PartyPopper, Stethoscope, Gift } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Sparkles, Heart, Users, LayoutDashboard, Leaf, Zap, PartyPopper, Stethoscope, Gift } from "lucide-react";
 import { useFeatureGateStore } from "@/stores/feature-gate-store";
 import { Button } from "@/components/ui/button";
 
@@ -24,56 +25,24 @@ export function UnlockTransition() {
           exit={{ opacity: 0 }}
           className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden"
         >
-          {/* Vibrant gradient background */}
-          <div className="absolute inset-0 bg-gradient-to-br from-violet-600 via-purple-600 to-pink-600" />
+          {/* Nature-inspired gradient background */}
+          <div className="absolute inset-0 bg-gradient-to-br from-sage-600 via-sage-500 to-emerald-600" />
           
           {/* Animated background elements */}
           <div className="absolute inset-0 overflow-hidden">
             <motion.div
-              className="absolute top-20 left-10 w-96 h-96 bg-pink-400/30 rounded-full blur-3xl"
+              className="absolute top-20 left-10 w-96 h-96 bg-emerald-400/20 rounded-full blur-3xl"
               animate={{ scale: [1, 1.3, 1], opacity: [0.3, 0.5, 0.3] }}
               transition={{ duration: 4, repeat: Infinity }}
             />
             <motion.div
-              className="absolute bottom-20 right-10 w-[500px] h-[500px] bg-amber-400/20 rounded-full blur-3xl"
+              className="absolute bottom-20 right-10 w-[500px] h-[500px] bg-teal-400/20 rounded-full blur-3xl"
               animate={{ scale: [1, 1.2, 1], opacity: [0.2, 0.4, 0.2] }}
               transition={{ duration: 5, repeat: Infinity }}
             />
             
             {/* Confetti particles */}
-            {[...Array(30)].map((_, i) => (
-              <motion.div
-                key={i}
-                className="absolute"
-                style={{
-                  left: `${Math.random() * 100}%`,
-                  top: `-5%`,
-                }}
-                initial={{ opacity: 0, y: 0 }}
-                animate={{
-                  opacity: [0, 1, 1, 0],
-                  y: ['0vh', '110vh'],
-                  x: [0, Math.random() * 100 - 50],
-                  rotate: [0, 360 * (Math.random() > 0.5 ? 1 : -1)],
-                }}
-                transition={{
-                  duration: 3 + Math.random() * 2,
-                  delay: Math.random() * 2,
-                  repeat: Infinity,
-                  repeatDelay: Math.random() * 2,
-                }}
-              >
-                {i % 4 === 0 ? (
-                  <Star className="w-4 h-4 text-amber-300 fill-amber-300" />
-                ) : i % 4 === 1 ? (
-                  <Heart className="w-4 h-4 text-rose-300 fill-rose-300" />
-                ) : i % 4 === 2 ? (
-                  <Sparkles className="w-4 h-4 text-white" />
-                ) : (
-                  <div className="w-3 h-3 rounded-full bg-gradient-to-br from-amber-300 to-pink-300" />
-                )}
-              </motion.div>
-            ))}
+            <Confetti />
           </div>
 
           <motion.div
@@ -122,7 +91,7 @@ export function UnlockTransition() {
                 
                 {/* Main celebration icon */}
                 <motion.div
-                  className="w-36 h-36 rounded-full bg-gradient-to-br from-amber-400 via-pink-400 to-purple-400 flex items-center justify-center shadow-2xl"
+                  className="w-36 h-36 rounded-full bg-gradient-to-br from-emerald-400 via-teal-400 to-sage-400 flex items-center justify-center shadow-2xl"
                   animate={{ scale: [1, 1.05, 1], rotate: [0, 5, -5, 0] }}
                   transition={{ duration: 3, repeat: Infinity }}
                 >
@@ -188,7 +157,7 @@ export function UnlockTransition() {
                 { icon: Heart, label: "Virtual Pets", color: "from-rose-400 to-pink-500", delay: 0.8 },
                 { icon: LayoutDashboard, label: "Wellness Dashboard", color: "from-emerald-400 to-teal-500", delay: 0.9 },
                 { icon: Stethoscope, label: "Consultations", color: "from-amber-400 to-orange-500", delay: 1.0 },
-                { icon: Users, label: "Community", color: "from-violet-400 to-purple-500", delay: 1.1 },
+                { icon: Users, label: "Community", color: "from-sage-400 to-emerald-500", delay: 1.1 },
               ].map(({ icon: Icon, label, color, delay }) => (
                 <motion.div
                   key={label}
@@ -218,7 +187,7 @@ export function UnlockTransition() {
                 <Button 
                   size="xl" 
                   onClick={handleContinue} 
-                  className="bg-white text-purple-600 hover:bg-white/90 shadow-2xl font-bold text-lg px-8 py-6 rounded-2xl"
+                  className="bg-white text-sage-700 hover:bg-white/90 shadow-2xl font-bold text-lg px-8 py-6 rounded-2xl"
                 >
                   <Sparkles className="w-6 h-6 mr-2" />
                   Choose Your Pet Companion
@@ -230,4 +199,42 @@ export function UnlockTransition() {
       )}
     </AnimatePresence>
   );
+}
+
+function Confetti() {
+  const [confetti, setConfetti] = useState<Array<{ left: string; x: number; rotateDir: number; duration: number; delay: number; repeatDelay: number }>>([]);
+
+  useEffect(() => {
+    const list = Array.from({ length: 30 }).map(() => ({
+      left: `${Math.random() * 100}%`,
+      x: Math.random() * 100 - 50,
+      rotateDir: Math.random() > 0.5 ? 1 : -1,
+      duration: 3 + Math.random() * 2,
+      delay: Math.random() * 2,
+      repeatDelay: Math.random() * 2,
+    }));
+    // Defer state update to avoid synchronous setState inside effect
+    setTimeout(() => setConfetti(list), 0);
+  }, []);
+
+  return <>{confetti.map((c, i) => (
+    <motion.div
+      key={i}
+      className="absolute"
+      style={{ left: c.left, top: `-5%` }}
+      initial={{ opacity: 0, y: 0 }}
+      animate={{ opacity: [0, 1, 1, 0], y: ['0vh', '110vh'], x: [0, c.x], rotate: [0, 360 * c.rotateDir] }}
+      transition={{ duration: c.duration, delay: c.delay, repeat: Infinity, repeatDelay: c.repeatDelay }}
+    >
+      {i % 4 === 0 ? (
+        <Leaf className="w-4 h-4 text-emerald-200" />
+      ) : i % 4 === 1 ? (
+        <Heart className="w-4 h-4 text-rose-300 fill-rose-300" />
+      ) : i % 4 === 2 ? (
+        <Sparkles className="w-4 h-4 text-white" />
+      ) : (
+        <div className="w-3 h-3 rounded-full bg-gradient-to-br from-emerald-300 to-teal-300" />
+      )}
+    </motion.div>
+  ))}</>;
 }

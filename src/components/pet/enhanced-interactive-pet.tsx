@@ -69,23 +69,52 @@ export function EnhancedInteractivePet({
       setPetMessage(interaction.message);
       setShowMessage(true);
 
-      // Play voice
-      const voice = getVoiceForMood(petType, currentMood);
-      if (voice) {
-        await playPetVoice(voice.id);
+      // Play sound effect first (shorter)
+      const soundMap: Record<InteractionType, string> = {
+        'pet': petType === 'dog' ? 'buddy-bark' : 'whiskers-meow',
+        'play': petType === 'dog' ? 'buddy-happy' : 'whiskers-happy',
+        'feed': petType === 'dog' ? 'buddy-bark' : 'whiskers-meow',
+        'talk': petType === 'dog' ? 'buddy-greeting' : 'whiskers-greeting',
+        'cuddle': petType === 'dog' ? 'buddy-calm' : 'whiskers-purr',
+        'exercise': petType === 'dog' ? 'buddy-playful' : 'whiskers-playful',
+        'train': petType === 'dog' ? 'buddy-encouraging' : 'whiskers-encouraging',
+        'celebrate': petType === 'dog' ? 'buddy-proud' : 'whiskers-proud',
+        'comfort': petType === 'dog' ? 'buddy-calm' : 'whiskers-purr',
+        'sleep': petType === 'dog' ? 'buddy-sleepy' : 'whiskers-sleepy',
+      };
+      
+      const soundId = soundMap[type] || (petType === 'dog' ? 'buddy-bark' : 'whiskers-meow');
+      
+      // Play sound immediately (user interaction triggered)
+      try {
+        await playPetSound(soundId);
+      } catch (err) {
+        console.warn('Sound play failed:', err);
       }
 
-      // Play sound effect
-      const sound = petType === 'dog' ? 'buddy-bark' : 'whiskers-meow';
-      await playPetSound(sound);
+      // Play voice after a short delay
+      setTimeout(async () => {
+        const voice = getVoiceForMood(petType, currentMood);
+        if (voice) {
+          try {
+            await playPetVoice(voice.id);
+          } catch (err) {
+            console.warn('Voice play failed:', err);
+          }
+        }
+      }, 500);
 
       // Call callback
       onInteraction?.(type, interaction.message);
 
-      // Hide message after 3 seconds
-      setTimeout(() => setShowMessage(false), 3000);
+      // Hide message after 4 seconds
+      setTimeout(() => setShowMessage(false), 4000);
     } catch (error) {
       console.error("Error recording interaction:", error);
+      // Still show a message even if interaction fails
+      setPetMessage(`${petName} is happy to see you!`);
+      setShowMessage(true);
+      setTimeout(() => setShowMessage(false), 3000);
     } finally {
       setIsAnimating(false);
     }
@@ -105,27 +134,40 @@ export function EnhancedInteractivePet({
   return (
     <div className="space-y-4">
       {/* Pet Display */}
-      <Card className="overflow-hidden">
+      <Card className="overflow-hidden bg-gradient-to-br from-white via-cream-50 to-olive-50/30 border-2 border-olive-200 shadow-glow">
         <CardContent className="p-6">
           <div className="flex flex-col items-center space-y-4">
             {/* Pet Avatar */}
             <motion.div
-              animate={isAnimating ? { scale: [1, 1.1, 1], rotate: [0, 5, -5, 0] } : {}}
-              transition={{ duration: 0.5 }}
+              animate={isAnimating ? { 
+                scale: [1, 1.15, 1], 
+                rotate: [0, 8, -8, 0],
+                y: [0, -5, 0]
+              } : {
+                scale: [1, 1.02, 1],
+                y: [0, -3, 0]
+              }}
+              transition={{ 
+                duration: isAnimating ? 0.6 : 3,
+                repeat: isAnimating ? 0 : Infinity,
+                ease: "easeInOut"
+              }}
               className="relative"
             >
               <div className={cn(
-                "w-32 h-32 rounded-full flex items-center justify-center text-6xl",
-                petType === 'dog' ? 'bg-amber-100' : 'bg-orange-100'
+                "w-36 h-36 rounded-full flex items-center justify-center text-7xl shadow-glow",
+                "bg-gradient-to-br",
+                petType === 'dog' ? 'from-amber-100 via-cream-50 to-coral-50' : 'from-coral-100 via-cream-50 to-olive-50',
+                "border-4 border-white"
               )}>
                 {petType === 'dog' ? '🐕' : '🐱'}
               </div>
               
               {/* Mood indicator */}
               <motion.div
-                animate={{ scale: [1, 1.2, 1] }}
-                transition={{ duration: 2, repeat: Infinity }}
-                className="absolute -top-2 -right-2 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-lg"
+                animate={{ scale: [1, 1.2, 1], rotate: [0, 10, -10, 0] }}
+                transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                className="absolute -top-2 -right-2 w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-lg border-2 border-olive-200 text-2xl"
               >
                 {currentMood === 'joyful' && '😄'}
                 {currentMood === 'playful' && '🤪'}
@@ -137,20 +179,25 @@ export function EnhancedInteractivePet({
 
             {/* Pet Name and Status */}
             <div className="text-center">
-              <h3 className="text-2xl font-bold text-sage-800">{petName}</h3>
-              <p className="text-sm text-sage-500">{currentMilestone.name}</p>
+              <h3 className="text-2xl font-serif font-bold text-olive-800">{petName}</h3>
+              <p className="text-sm text-olive-500">{currentMilestone.name}</p>
             </div>
 
             {/* Pet Message */}
             <AnimatePresence>
               {showMessage && (
                 <motion.div
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  className="bg-sage-100 text-sage-800 px-4 py-2 rounded-lg text-sm text-center max-w-xs"
+                  initial={{ opacity: 0, y: -10, scale: 0.9 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -10, scale: 0.9 }}
+                  className="bg-gradient-to-r from-olive-100 to-cream-100 text-olive-800 px-5 py-3 rounded-xl text-sm text-center max-w-xs shadow-md border border-olive-200 font-medium"
                 >
-                  {petMessage}
+                  <motion.span
+                    animate={{ scale: [1, 1.05, 1] }}
+                    transition={{ duration: 0.5, repeat: Infinity }}
+                  >
+                    {petMessage}
+                  </motion.span>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -158,15 +205,15 @@ export function EnhancedInteractivePet({
             {/* Stats */}
             <div className="w-full space-y-2">
               <div className="flex items-center justify-between text-sm">
-                <span className="text-sage-600 flex items-center gap-1">
-                  <Heart className="w-4 h-4 text-red-500" />
+                <span className="text-olive-600 flex items-center gap-1">
+                  <Heart className="w-4 h-4 text-coral-500" />
                   Happiness
                 </span>
-                <span className="font-medium text-sage-800">{stats.happiness}%</span>
+                <span className="font-medium text-olive-800">{stats.happiness}%</span>
               </div>
-              <div className="w-full bg-beige-200 rounded-full h-2 overflow-hidden">
+              <div className="w-full bg-cream-200 rounded-full h-2 overflow-hidden">
                 <motion.div
-                  className="bg-red-500 h-full rounded-full"
+                  className="bg-coral-500 h-full rounded-full"
                   initial={{ width: 0 }}
                   animate={{ width: `${stats.happiness}%` }}
                   transition={{ duration: 0.5 }}
@@ -174,15 +221,15 @@ export function EnhancedInteractivePet({
               </div>
 
               <div className="flex items-center justify-between text-sm mt-3">
-                <span className="text-sage-600 flex items-center gap-1">
-                  <Zap className="w-4 h-4 text-yellow-500" />
+                <span className="text-olive-600 flex items-center gap-1">
+                  <Zap className="w-4 h-4 text-amber-500" />
                   Energy
                 </span>
-                <span className="font-medium text-sage-800">{stats.energy}%</span>
+                <span className="font-medium text-olive-800">{stats.energy}%</span>
               </div>
-              <div className="w-full bg-beige-200 rounded-full h-2 overflow-hidden">
+              <div className="w-full bg-cream-200 rounded-full h-2 overflow-hidden">
                 <motion.div
-                  className="bg-yellow-500 h-full rounded-full"
+                  className="bg-amber-500 h-full rounded-full"
                   initial={{ width: 0 }}
                   animate={{ width: `${stats.energy}%` }}
                   transition={{ duration: 0.5 }}
@@ -190,13 +237,13 @@ export function EnhancedInteractivePet({
               </div>
 
               <div className="flex items-center justify-between text-sm mt-3">
-                <span className="text-sage-600 flex items-center gap-1">
+                <span className="text-olive-600 flex items-center gap-1">
                   <Heart className="w-4 h-4 text-pink-500" />
                   Affection
                 </span>
-                <span className="font-medium text-sage-800">{stats.affection}%</span>
+                <span className="font-medium text-olive-800">{stats.affection}%</span>
               </div>
-              <div className="w-full bg-beige-200 rounded-full h-2 overflow-hidden">
+              <div className="w-full bg-cream-200 rounded-full h-2 overflow-hidden">
                 <motion.div
                   className="bg-pink-500 h-full rounded-full"
                   initial={{ width: 0 }}
@@ -209,22 +256,22 @@ export function EnhancedInteractivePet({
             {/* Bond Level */}
             <button
               onClick={() => setShowBondInfo(!showBondInfo)}
-              className="w-full p-3 bg-gradient-to-r from-sage-100 to-emerald-100 rounded-lg hover:shadow-md transition-shadow"
+              className="w-full p-4 bg-gradient-to-r from-olive-100 to-cream-100 rounded-xl hover:shadow-md transition-all border border-olive-200"
             >
               <div className="flex items-center justify-between mb-2">
-                <span className="font-medium text-sage-800">Bond Level</span>
-                <span className="text-lg font-bold text-sage-700">{bondLevel}/100</span>
+                <span className="font-medium text-olive-800">Bond Level</span>
+                <span className="text-lg font-bold text-olive-700">{bondLevel}/100</span>
               </div>
               <div className="w-full bg-white rounded-full h-3 overflow-hidden">
                 <motion.div
-                  className="bg-gradient-to-r from-sage-400 to-emerald-400 h-full rounded-full"
+                  className="bg-gradient-to-r from-olive-400 to-olive-500 h-full rounded-full"
                   initial={{ width: 0 }}
                   animate={{ width: `${bondLevel}%` }}
                   transition={{ duration: 0.5 }}
                 />
               </div>
               {nextMilestone && (
-                <p className="text-xs text-sage-600 mt-2">
+                <p className="text-xs text-olive-600 mt-2">
                   {bondProgress.progress}% to {nextMilestone.name}
                 </p>
               )}
@@ -237,12 +284,12 @@ export function EnhancedInteractivePet({
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
-                  className="w-full bg-sage-50 rounded-lg p-3 space-y-2 text-sm"
+                  className="w-full bg-olive-50 rounded-xl p-4 space-y-2 text-sm border border-olive-200"
                 >
-                  <p className="font-medium text-sage-800">{currentMilestone.name}</p>
-                  <p className="text-sage-600">{currentMilestone.description}</p>
+                  <p className="font-medium text-olive-800">{currentMilestone.name}</p>
+                  <p className="text-olive-600">{currentMilestone.description}</p>
                   {nextMilestone && (
-                    <p className="text-sage-500 text-xs">
+                    <p className="text-olive-500 text-xs">
                       Next: {nextMilestone.name} at {nextMilestone.level} bond
                     </p>
                   )}
@@ -254,38 +301,63 @@ export function EnhancedInteractivePet({
       </Card>
 
       {/* Interaction Buttons */}
-      <div className="grid grid-cols-4 gap-2">
+      <div className="grid grid-cols-4 gap-3">
         {interactionButtons.map(({ type, icon, label, color }) => (
           <motion.button
             key={type}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
+            whileHover={{ scale: 1.08, y: -2 }}
+            whileTap={{ scale: 0.92 }}
             onClick={() => handleInteraction(type)}
             disabled={isAnimating}
             className={cn(
-              "flex flex-col items-center gap-1 p-2 rounded-lg transition-all disabled:opacity-50",
-              color
+              "flex flex-col items-center gap-2 p-3 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed",
+              "shadow-md hover:shadow-lg border-2 border-white/50",
+              color,
+              isAnimating && "animate-pulse-subtle"
             )}
           >
-            {icon}
-            <span className="text-xs font-medium">{label}</span>
+            <motion.div
+              animate={isAnimating ? { rotate: [0, 10, -10, 0] } : {}}
+              transition={{ duration: 0.3 }}
+            >
+              {icon}
+            </motion.div>
+            <span className="text-xs font-semibold">{label}</span>
           </motion.button>
         ))}
       </div>
 
       {/* Sound Toggle */}
-      <Button
-        variant="outline"
-        size="sm"
-        className="w-full"
-        onClick={() => {
-          const voice = getVoiceForMood(petType, currentMood);
-          if (voice) playPetVoice(voice.id);
-        }}
+      <motion.div
+        whileHover={{ scale: 1.02 }}
+        whileTap={{ scale: 0.98 }}
       >
-        <Volume2 className="w-4 h-4 mr-2" />
-        Hear {petName}'s Voice
-      </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full border-2 border-olive-300 hover:border-olive-400 hover:bg-olive-50"
+          onClick={async () => {
+            try {
+              // Play a random sound first
+              const sound = petType === 'dog' ? 'buddy-bark' : 'whiskers-meow';
+              await playPetSound(sound);
+              
+              // Then play voice after short delay
+              setTimeout(async () => {
+                const voice = getVoiceForMood(petType, currentMood);
+                if (voice) {
+                  await playPetVoice(voice.id);
+                }
+              }, 300);
+            } catch (err) {
+              console.warn('Audio play failed:', err);
+            }
+          }}
+        >
+          <Volume2 className="w-4 h-4 mr-2" />
+          Hear {petName}'s Voice
+        </Button>
+      </motion.div>
     </div>
   );
 }

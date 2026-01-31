@@ -275,9 +275,23 @@ const themePatterns = {
 };
 
 const crisisIndicators = [
+  // Direct self-harm/suicide references
   "kill myself", "end my life", "suicide", "suicidal", "want to die",
   "don't want to live", "better off dead", "no reason to live",
-  "end it all", "hurt myself", "self-harm", "cutting", "overdose"
+  "end it all", "hurt myself", "self-harm", "cutting", "overdose",
+  // Life disinterest indicators
+  "not interested in life", "don't want to be here", "tired of living",
+  "don't want to exist", "want to disappear", "wish i was dead",
+  "wish i wasn't alive", "no point in living", "can't go on",
+  "want it to end", "ready to die", "thinking about death",
+  // Shorter trigger words (checked with word boundaries in triggerWordCheck)
+  "wanna die", "gonna die", "let me die", "just die"
+];
+
+// Direct trigger words that should ALWAYS flag as crisis (exact word matches)
+export const directTriggerWords = [
+  "die", "suicide", "suicidal", "kill", "death", "dead",
+  "overdose", "hanging", "drown", "jump", "slit", "bleed"
 ];
 
 const positiveIndicators = [
@@ -325,8 +339,16 @@ export function analyzeMessage(message: string): SentimentResult {
     }
   }
   
-  // Detect crisis
-  const isCrisis = crisisIndicators.some(indicator => lowerMessage.includes(indicator));
+  // Detect crisis - check both phrase indicators and direct trigger words
+  const hasCrisisPhrase = crisisIndicators.some(indicator => lowerMessage.includes(indicator));
+  
+  // Check for direct trigger words with word boundaries
+  const hasTriggerWord = directTriggerWords.some(word => {
+    const regex = new RegExp(`\\b${word}\\b`, 'i');
+    return regex.test(lowerMessage);
+  });
+  
+  const isCrisis = hasCrisisPhrase || hasTriggerWord;
   
   // Calculate category scores
   const scores: Record<SentimentCategory, number> = {

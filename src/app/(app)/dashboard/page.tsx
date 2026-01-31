@@ -1,1129 +1,656 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
-  Flame, Heart, MessageCircle, Sparkles, Plus, Calendar, Search, 
-  Trash2, Edit3, Save, X, TrendingUp, TrendingDown, Minus, Brain,
-  BookOpen, Activity, AlertTriangle, Shield
+  TrendingUp, TrendingDown, Brain, BookOpen, Activity, 
+  Target, Sun, Moon, Droplets, Wind, Bed, Apple, 
+  CheckCircle2, Sparkles, Lightbulb, BarChart3, 
+  Heart, Phone, MessageCircle, Play, Clock, Shield,
+  X, Plus, ChevronRight, Calendar, Award, PenLine, FileText
 } from "lucide-react";
+import Link from "next/link";
 import { useAuthStore } from "@/stores/auth-store";
-import { usePetStore } from "@/stores/pet-store";
-import { useFeatureGateStore } from "@/stores/feature-gate-store";
-import { useChatStore } from "@/stores/chat-store";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Modal } from "@/components/ui/modal";
-import { PetDisplay } from "@/components/pet/pet-display";
-import { InteractivePet } from "@/components/pet/interactive-pet";
-import { Loading } from "@/components/ui/loading";
-import { createClient, isDemoMode } from "@/lib/supabase/client";
-import { 
-  analyzeMessage as analyzeSentiment, 
-  analyzeProgress,
-  getCategoryInfo, 
-  type SentimentResult,
-  type ProgressData 
-} from "@/lib/unified-ai";
-import {
-  generateDashboardData,
-  type SessionData,
-  type ComprehensiveDashboardData
-} from "@/lib/analytics-engine";
 import { cn } from "@/lib/utils";
-import type { DashboardData } from "@/types";
+import { analyzeJournalEntry, getEmotionColor, type FullJournalAnalysis } from "@/lib/journal-analysis-engine";
 
-type TabType = "overview" | "analytics" | "journal";
+interface DailyHabit {
+  id: string;
+  name: string;
+  icon: typeof Sun;
+  completed: boolean;
+  color: string;
+}
+
+interface Exercise {
+  id: string;
+  name: string;
+  progress: number;
+  duration: string;
+  category: string;
+  icon: string;
+}
 
 interface JournalEntry {
   id: string;
   title: string;
   content: string;
   mood: string;
-  sentiment?: SentimentResult;
+  analysis?: FullJournalAnalysis;
   createdAt: Date;
-  updatedAt: Date;
 }
 
 const moodOptions = [
-  { emoji: "😊", label: "Happy", color: "bg-yellow-100 text-yellow-700" },
-  { emoji: "😌", label: "Calm", color: "bg-green-100 text-green-700" },
-  { emoji: "😔", label: "Sad", color: "bg-blue-100 text-blue-700" },
-  { emoji: "😤", label: "Frustrated", color: "bg-red-100 text-red-700" },
-  { emoji: "😰", label: "Anxious", color: "bg-purple-100 text-purple-700" },
-  { emoji: "🤔", label: "Reflective", color: "bg-sage-100 text-sage-700" },
+  { emoji: "😊", label: "Great", value: 5 },
+  { emoji: "🙂", label: "Good", value: 4 },
+  { emoji: "😐", label: "Okay", value: 3 },
+  { emoji: "😔", label: "Low", value: 2 },
+  { emoji: "😢", label: "Struggling", value: 1 },
 ];
 
-const journalPrompts = [
-  "What are you grateful for today?",
-  "How are you feeling right now?",
-  "What's one thing you accomplished today?",
-  "What's been on your mind lately?",
-  "Describe a moment that made you smile.",
-  "What would make tomorrow great?",
+const getInitialHabits = (): DailyHabit[] => [
+  { id: "water", name: "Drink Water", icon: Droplets, completed: false, color: "#3b82f6" },
+  { id: "exercise", name: "Move Body", icon: Activity, completed: false, color: "#22c55e" },
+  { id: "breathe", name: "Deep Breaths", icon: Wind, completed: false, color: "#8b5cf6" },
+  { id: "sleep", name: "Good Sleep", icon: Bed, completed: false, color: "#6366f1" },
+  { id: "nutrition", name: "Eat Well", icon: Apple, completed: false, color: "#f59e0b" },
+  { id: "mindful", name: "Mindfulness", icon: Brain, completed: false, color: "#ec4899" },
 ];
 
-const demoEntries: JournalEntry[] = [
-  {
-    id: "1",
-    title: "A Good Start",
-    content: "Today I woke up feeling refreshed. I took some time to meditate and it really helped set a positive tone for the day. I'm grateful for the small moments of peace.",
-    mood: "😌",
-    createdAt: new Date(Date.now() - 2 * 86400000),
-    updatedAt: new Date(Date.now() - 2 * 86400000),
-  },
-  {
-    id: "2",
-    title: "Challenging Day",
-    content: "Work was stressful today, but I managed to take breaks and practice deep breathing. Talking to my AI companion helped me process my feelings.",
-    mood: "😰",
-    createdAt: new Date(Date.now() - 1 * 86400000),
-    updatedAt: new Date(Date.now() - 1 * 86400000),
-  },
+const exercises: Exercise[] = [
+  { id: "1", name: "Gratitude Journal", progress: 98, duration: "6h 32min", category: "Positive thinking", icon: "📝" },
+  { id: "2", name: "Deep Breathing", progress: 75, duration: "2h 15min", category: "Stress relief", icon: "🌬️" },
+  { id: "3", name: "Mindful Walking", progress: 55, duration: "1h 40min", category: "Mindfulness", icon: "🚶" },
+  { id: "4", name: "Body Scan", progress: 40, duration: "45min", category: "Relaxation", icon: "🧘" },
 ];
 
-const personalityDescriptions: Record<string, string> = {
-  calm: "Brings peace and tranquility",
-  playful: "Adds joy and lightness",
-  grounding: "Helps you stay centered",
-  motivating: "Encourages and uplifts you",
-};
-
-const personalityColors: Record<string, string> = {
-  calm: "bg-soft-blue-100 text-soft-blue-700",
-  playful: "bg-amber-100 text-amber-700",
-  grounding: "bg-sage-100 text-sage-700",
-  motivating: "bg-pink-100 text-pink-700",
-};
-
-function getDemoDashboardData(): DashboardData {
-  return {
-    moodTrends: [
-      { date: new Date(Date.now() - 6 * 86400000), moodScore: 6, dominantEmotion: "calm" },
-      { date: new Date(Date.now() - 5 * 86400000), moodScore: 7, dominantEmotion: "hopeful" },
-      { date: new Date(Date.now() - 4 * 86400000), moodScore: 5, dominantEmotion: "anxious" },
-      { date: new Date(Date.now() - 3 * 86400000), moodScore: 7, dominantEmotion: "grateful" },
-      { date: new Date(Date.now() - 2 * 86400000), moodScore: 8, dominantEmotion: "peaceful" },
-      { date: new Date(Date.now() - 1 * 86400000), moodScore: 7, dominantEmotion: "content" },
-      { date: new Date(), moodScore: 8, dominantEmotion: "happy" },
-    ],
-    chatStreak: 5,
-    petBondLevel: 35,
-    emotionalKeywords: [
-      { word: "grateful", count: 8 },
-      { word: "calm", count: 6 },
-      { word: "hopeful", count: 5 },
-      { word: "peaceful", count: 4 },
-      { word: "anxious", count: 3 },
-      { word: "happy", count: 3 },
-    ],
-    totalSessions: 12,
-    affirmation: "You are doing great. Every step forward matters.",
-  };
-}
-
-// Realistic pet images for selection - high quality
-const petImages: Record<string, string> = {
-  calm: "https://images.unsplash.com/photo-1587300003388-59208cc962cb?w=400&h=400&fit=crop&crop=face",
-  playful: "https://images.unsplash.com/photo-1574158622682-e40e69881006?w=400&h=400&fit=crop&crop=face",
-  grounding: "https://images.unsplash.com/photo-1585110396000-c9ffd4e4b308?w=400&h=400&fit=crop&crop=face",
-  motivating: "https://images.unsplash.com/photo-1522926193341-e9ffd686c60f?w=400&h=400&fit=crop&crop=face",
-};
-
-// Pet names for display
-const petNames: Record<string, string> = {
-  calm: "Buddy",
-  playful: "Whiskers",
-  grounding: "Cotton",
-  motivating: "Sunny",
-};
+const weekDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 export default function DashboardPage() {
-  const { user, isDemoMode: isAuthDemoMode } = useAuthStore();
-  const { userPet, activePet, pets, fetchPets, selectPet } = usePetStore();
-  const { isFullyUnlocked } = useFeatureGateStore();
-  const { messages } = useChatStore();
-  
-  const [activeTab, setActiveTab] = useState<TabType>("overview");
-  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const { user, profile } = useAuthStore();
+  const [todayMood, setTodayMood] = useState<number | null>(null);
+  const [habits, setHabits] = useState<DailyHabit[]>(getInitialHabits());
+  const [weeklyMoods, setWeeklyMoods] = useState([65, 72, 58, 80, 75, 85, 0]);
+  const [showMoodPicker, setShowMoodPicker] = useState(false);
   
   // Journal state
-  const [entries, setEntries] = useState<JournalEntry[]>([]);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [showEditor, setShowEditor] = useState(false);
-  const [editingEntry, setEditingEntry] = useState<JournalEntry | null>(null);
-  const [title, setTitle] = useState("");
-  const [content, setContent] = useState("");
-  const [selectedMood, setSelectedMood] = useState("");
-  const [currentPrompt, setCurrentPrompt] = useState("");
-  
-  // Pet selection state
-  const [showInteractivePet, setShowInteractivePet] = useState(false);
-  
-  // Sentiment analysis state
-  const [progressData, setProgressData] = useState<ProgressData[]>([]);
-  const [wellnessScore, setWellnessScore] = useState(75);
-  const [trend, setTrend] = useState<"improving" | "stable" | "declining">("stable");
-  
-  // Day counter state
-  const [daysWithSahara, setDaysWithSahara] = useState(1);
+  const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
+  const [showJournalModal, setShowJournalModal] = useState(false);
+  const [newEntry, setNewEntry] = useState({ title: "", content: "", mood: "😊" });
 
-  const showDashboard = isFullyUnlocked || isDemoMode() || isAuthDemoMode;
-  
-  // Generate analytics data from chat messages
-  const analyticsData = useMemo<ComprehensiveDashboardData | null>(() => {
-    if (messages.length === 0) return null;
-    
-    // Convert chat messages to session data format
-    const sessionData: SessionData[] = [{
-      id: 'current-session',
-      userId: user?.id || 'demo-user',
-      startedAt: messages[0]?.createdAt || new Date(),
-      endedAt: messages[messages.length - 1]?.createdAt,
-      messageCount: messages.length,
-      userMessages: messages.filter(m => m.role === 'user').map(m => m.content),
-      sentimentScores: messages.filter(m => m.role === 'user').map(m => {
-        const sentiment = analyzeSentiment(m.content);
-        // Convert wellness score (0-100) to sentiment score (-1 to 1)
-        return (sentiment.wellnessScore / 50) - 1;
-      }),
-      emotionalKeywords: messages.flatMap(m => m.emotionalKeywords || [])
-    }];
-    
-    return generateDashboardData(sessionData, dashboardData?.petBondLevel || 0);
-  }, [messages, user?.id, dashboardData?.petBondLevel]);
-  
-  // Track days with Sahara
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+
+  // Load saved data
   useEffect(() => {
-    const firstVisitKey = "sahara-first-visit";
-    const stored = localStorage.getItem(firstVisitKey);
+    if (typeof window === 'undefined') return;
+    const savedMood = localStorage.getItem("sahara-mood-today");
+    const savedHabits = localStorage.getItem("sahara-habits-today");
+    const savedJournal = localStorage.getItem("sahara-journal-entries");
     
-    if (!stored) {
-      localStorage.setItem(firstVisitKey, new Date().toISOString());
-      setDaysWithSahara(1);
-    } else {
-      const firstVisit = new Date(stored);
-      const now = new Date();
-      const diffTime = Math.abs(now.getTime() - firstVisit.getTime());
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      setDaysWithSahara(Math.max(1, diffDays));
+    if (savedMood) {
+      try {
+        const moodData = JSON.parse(savedMood);
+        const today = new Date().toDateString();
+        if (moodData.date === today) {
+          setTodayMood(moodData.value);
+          setWeeklyMoods(prev => [...prev.slice(0, 6), moodData.value * 20]);
+        }
+      } catch {}
+    }
+    
+    if (savedHabits) {
+      try {
+        const habitsData = JSON.parse(savedHabits);
+        const today = new Date().toDateString();
+        if (habitsData.date === today) {
+          setHabits(habitsData.habits.map((h: DailyHabit) => ({
+            ...h,
+            icon: getInitialHabits().find(ih => ih.id === h.id)?.icon || Sun
+          })));
+        }
+      } catch {}
+    }
+
+    if (savedJournal) {
+      try {
+        const entries = JSON.parse(savedJournal);
+        setJournalEntries(entries.map((e: JournalEntry) => ({
+          ...e,
+          createdAt: new Date(e.createdAt)
+        })));
+      } catch {}
     }
   }, []);
 
-  // Load journal entries
+  // Save habits
   useEffect(() => {
-    if (showDashboard) {
-      const saved = localStorage.getItem("sahara-journal-entries");
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        const loadedEntries = parsed.map((e: JournalEntry) => ({
-          ...e,
-          createdAt: new Date(e.createdAt),
-          updatedAt: new Date(e.updatedAt),
-        }));
-        setEntries(loadedEntries);
-      } else {
-        // Add sentiment to demo entries
-        const entriesWithSentiment = demoEntries.map(e => ({
-          ...e,
-          sentiment: analyzeSentiment(e.content)
-        }));
-        setEntries(entriesWithSentiment);
-      }
+    if (typeof window !== 'undefined') {
+      const today = new Date().toDateString();
+      const habitsToSave = habits.map(h => ({ id: h.id, name: h.name, completed: h.completed, color: h.color }));
+      localStorage.setItem("sahara-habits-today", JSON.stringify({ date: today, habits: habitsToSave }));
     }
-  }, [showDashboard]);
+  }, [habits]);
 
-  // Save entries to localStorage
+  // Save journal entries
   useEffect(() => {
-    if (entries.length > 0) {
-      localStorage.setItem("sahara-journal-entries", JSON.stringify(entries));
+    if (typeof window !== 'undefined' && journalEntries.length > 0) {
+      localStorage.setItem("sahara-journal-entries", JSON.stringify(journalEntries));
     }
-  }, [entries]);
+  }, [journalEntries]);
 
-  // Analyze sentiment from journal and chat
-  useEffect(() => {
-    const journalProgress: ProgressData[] = entries.map(e => ({
-      date: e.createdAt,
-      sentiment: e.sentiment || analyzeSentiment(e.content),
-      source: "journal" as const,
-      text: e.content
-    }));
-    
-    const chatProgress: ProgressData[] = messages
-      .filter(m => m.role === "user")
-      .map(m => ({
-        date: new Date(),
-        sentiment: analyzeSentiment(m.content),
-        source: "chat" as const,
-        text: m.content
-      }));
-    
-    const allProgress = [...journalProgress, ...chatProgress].sort(
-      (a, b) => a.date.getTime() - b.date.getTime()
-    );
-    
-    setProgressData(allProgress);
-    
-    if (allProgress.length > 0) {
-      const analysis = analyzeProgress(allProgress);
-      setWellnessScore(analysis.averageWellness);
-      setTrend(analysis.trend);
-    }
-  }, [entries, messages]);
+  const completedHabits = habits.filter(h => h.completed).length;
+  const toggleHabit = (id: string) => {
+    setHabits(habits.map(h => h.id === id ? { ...h, completed: !h.completed } : h));
+  };
 
-  // Fetch pets
-  useEffect(() => {
-    fetchPets();
-  }, [fetchPets]);
+  const handleMoodSelect = (value: number) => {
+    setTodayMood(value);
+    setWeeklyMoods(prev => [...prev.slice(0, 6), value * 20]);
+    localStorage.setItem("sahara-mood-today", JSON.stringify({ date: new Date().toDateString(), value }));
+    setShowMoodPicker(false);
+  };
 
-  // Fetch dashboard data
-  useEffect(() => {
-    async function fetchDashboardData() {
-      if (!user) return;
-
-      if (isDemoMode() || isAuthDemoMode) {
-        setDashboardData(getDemoDashboardData());
-        setIsLoading(false);
-        return;
-      }
-
-      const supabase = createClient();
-
-      try {
-        const { count: sessionCount } = await supabase
-          .from("chat_sessions")
-          .select("*", { count: "exact", head: true })
-          .eq("user_id", user.id)
-          .eq("is_completed", true);
-
-        const { data: moodData } = await supabase
-          .from("mood_entries")
-          .select("*")
-          .eq("user_id", user.id)
-          .order("recorded_at", { ascending: false })
-          .limit(7);
-
-        const { data: messagesData } = await supabase
-          .from("chat_messages")
-          .select("emotional_keywords")
-          .eq("user_id", user.id)
-          .not("emotional_keywords", "is", null)
-          .order("created_at", { ascending: false })
-          .limit(50);
-
-        const keywordCounts: Record<string, number> = {};
-        messagesData?.forEach((msg) => {
-          msg.emotional_keywords?.forEach((keyword: string) => {
-            keywordCounts[keyword] = (keywordCounts[keyword] || 0) + 1;
-          });
-        });
-
-        const emotionalKeywords = Object.entries(keywordCounts)
-          .map(([word, count]) => ({ word, count }))
-          .sort((a, b) => b.count - a.count)
-          .slice(0, 8);
-
-        const { data: affirmationData } = await supabase
-          .from("affirmations")
-          .select("content")
-          .limit(1)
-          .single();
-
-        const { data: sessionDates } = await supabase
-          .from("chat_sessions")
-          .select("started_at")
-          .eq("user_id", user.id)
-          .eq("is_completed", true)
-          .order("started_at", { ascending: false });
-
-        let streak = 0;
-        if (sessionDates && sessionDates.length > 0) {
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
-          
-          for (const session of sessionDates) {
-            const sessionDate = new Date(session.started_at);
-            sessionDate.setHours(0, 0, 0, 0);
-            const diffDays = Math.floor((today.getTime() - sessionDate.getTime()) / 86400000);
-            if (diffDays <= streak + 1) streak++;
-            else break;
-          }
-        }
-
-        setDashboardData({
-          moodTrends: moodData?.map((m) => ({
-            date: new Date(m.recorded_at),
-            moodScore: m.mood_score,
-            dominantEmotion: m.dominant_emotion,
-          })) || [],
-          chatStreak: streak,
-          petBondLevel: userPet?.bondLevel || 0,
-          emotionalKeywords,
-          totalSessions: sessionCount || 0,
-          affirmation: affirmationData?.content || "You are doing great. Every step forward matters.",
-        });
-      } catch (error) {
-        console.error("Error fetching dashboard data:", error);
-        setDashboardData(getDemoDashboardData());
-      } finally {
-        setIsLoading(false);
-      }
-    }
-
-    if (showDashboard) {
-      fetchDashboardData();
-    } else {
-      setIsLoading(false);
-    }
-  }, [user, showDashboard, userPet?.bondLevel, isAuthDemoMode]);
-
-  // Get random prompt
-  useEffect(() => {
-    setCurrentPrompt(journalPrompts[Math.floor(Math.random() * journalPrompts.length)]);
-  }, [showEditor]);
-
-  // Journal handlers
-  const handleSaveEntry = () => {
-    if (!title.trim() || !content.trim()) return;
-
-    const sentiment = analyzeSentiment(content);
-
-    if (editingEntry) {
-      setEntries((prev) =>
-        prev.map((e) =>
-          e.id === editingEntry.id
-            ? { ...e, title, content, mood: selectedMood, sentiment, updatedAt: new Date() }
-            : e
-        )
-      );
-    } else {
-      const newEntry: JournalEntry = {
+  const handleSaveJournal = () => {
+    if (newEntry.title && newEntry.content) {
+      const content = newEntry.content;
+      const analysis = analyzeJournalEntry(content, journalEntries.map(e => e.content));
+      const entry: JournalEntry = {
         id: Date.now().toString(),
-        title,
-        content,
-        mood: selectedMood || "🤔",
-        sentiment,
-        createdAt: new Date(),
-        updatedAt: new Date(),
+        ...newEntry,
+        analysis,
+        createdAt: new Date()
       };
-      setEntries((prev) => [newEntry, ...prev]);
+      setJournalEntries([entry, ...journalEntries]);
+      setNewEntry({ title: "", content: "", mood: "😊" });
+      setShowJournalModal(false);
+      
+      // Send alert for serious content
+      fetch("/api/journal/alert", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content, userId: user?.id, userName: profile?.name }),
+      }).catch(() => {});
     }
-
-    resetEditor();
   };
 
-  const handleDeleteEntry = (id: string) => {
-    setEntries((prev) => prev.filter((e) => e.id !== id));
-  };
-
-  const handleEditEntry = (entry: JournalEntry) => {
-    setEditingEntry(entry);
-    setTitle(entry.title);
-    setContent(entry.content);
-    setSelectedMood(entry.mood);
-    setShowEditor(true);
-  };
-
-  const resetEditor = () => {
-    setShowEditor(false);
-    setEditingEntry(null);
-    setTitle("");
-    setContent("");
-    setSelectedMood("");
-  };
-
-  const formatDate = (date: Date) => {
-    return new Intl.DateTimeFormat("en-US", {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-    }).format(date);
-  };
-
-  const filteredEntries = entries.filter(
-    (entry) =>
-      entry.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      entry.content.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  if (!showDashboard) {
-    return (
-      <div className="flex items-center justify-center min-h-screen p-4">
-        <Card className="max-w-md text-center">
-          <CardContent className="pt-6">
-            <p className="text-sage-600">
-              Complete 10 chat sessions to unlock the dashboard.
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loading size="lg" text="Loading your wellness data..." />
-      </div>
-    );
-  }
+  const stats = [
+    { 
+      title: "Progress Tracking", 
+      value: completedHabits, 
+      change: "+15%", 
+      positive: true,
+      subtitle: "Goals achieved this week",
+      color: "from-blue-500/10 to-cyan-500/10",
+      barColor: "bg-blue-500",
+      progress: (completedHabits / habits.length) * 100
+    },
+    { 
+      title: "Educational Sources", 
+      value: 12, 
+      change: "+30%", 
+      positive: true,
+      subtitle: "Articles & exercises completed",
+      color: "from-purple-500/10 to-pink-500/10",
+      items: ["Breathing techniques", "Stress management"],
+      barColor: "bg-purple-500"
+    },
+    { 
+      title: "Wellness Sessions", 
+      value: 6, 
+      change: "+5%", 
+      positive: true,
+      subtitle: "Sessions this month",
+      color: "from-emerald-500/10 to-teal-500/10",
+      barColor: "bg-emerald-500",
+      progress: 60
+    },
+  ];
 
   return (
-    <div className="p-4 pb-24 space-y-4">
-      {/* Header with Day Counter */}
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="flex items-center justify-between"
-      >
-        <div>
-          <h1 className="text-2xl font-bold text-sage-800">Your Wellness</h1>
-          <p className="text-sage-600">Keep growing, one day at a time</p>
-        </div>
-        <div className="flex items-center gap-3">
-          {/* Day Counter Badge */}
-          <motion.div
-            initial={{ scale: 0.8, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ delay: 0.2 }}
-            className="flex flex-col items-center"
-          >
-            <div className="relative">
-              <div className="w-14 h-14 rounded-full bg-gradient-to-br from-sage-400 to-sage-600 flex items-center justify-center shadow-lg">
-                <span className="text-xl font-bold text-white">{daysWithSahara}</span>
-              </div>
-              <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-amber-400 rounded-full flex items-center justify-center">
-                <Calendar className="w-3 h-3 text-amber-800" />
-              </div>
-            </div>
-            <span className="text-[10px] text-sage-500 mt-1 font-medium">
-              {daysWithSahara === 1 ? "Day" : "Days"}
-            </span>
-          </motion.div>
-          <div onClick={() => setShowInteractivePet(true)} className="cursor-pointer">
-            <PetDisplay size="sm" />
+    <div className="min-h-screen pb-24 bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/20 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
+      <div className="max-w-4xl mx-auto px-4">
+        {/* Header */}
+        <motion.div 
+          initial={{ opacity: 0, y: -20 }} 
+          animate={{ opacity: 1, y: 0 }} 
+          className="pt-6 pb-6"
+        >
+          <div className="flex items-center gap-2">
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center"
+            >
+              <Sparkles className="w-4 h-4 text-white" />
+            </motion.div>
+            <h1 className="text-2xl md:text-3xl font-bold text-[var(--text)]">
+              Hey, {profile?.name || "Friend"}! <span className="inline-block animate-bounce">🙌</span>
+            </h1>
           </div>
-        </div>
-      </motion.div>
+          <p className="text-[var(--text-muted)] mt-1 ml-10">Glad to have you back</p>
+        </motion.div>
 
-      {/* Tab Navigation */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.05 }}
-        className="flex gap-1 bg-beige-100 p-1 rounded-xl overflow-x-auto"
-      >
-        {[
-          { id: "overview" as TabType, label: "Overview", icon: Brain },
-          { id: "analytics" as TabType, label: "Insights", icon: Activity },
-          { id: "journal" as TabType, label: "Journal", icon: BookOpen },
-        ].map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            onClick={() => setActiveTab(id)}
-            className={cn(
-              "flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-medium transition-all whitespace-nowrap",
-              activeTab === id
-                ? "bg-white text-sage-800 shadow-sm"
-                : "text-sage-500 hover:text-sage-700"
-            )}
-          >
-            <Icon className="w-3.5 h-3.5" />
-            {label}
-          </button>
-        ))}
-      </motion.div>
-
-      {/* Tab Content */}
-      <AnimatePresence mode="wait">
-        {activeTab === "overview" && (
-          <motion.div
-            key="overview"
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 20 }}
-            className="space-y-4"
-          >
-            {/* Wellness Score */}
-            <Card className="bg-gradient-to-r from-sage-100 to-beige-100 border-none">
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-sage-600 mb-1">Wellness Score</p>
-                    <p className="text-4xl font-bold text-sage-800">{wellnessScore}</p>
-                    <div className="flex items-center gap-1 mt-1">
-                      {trend === "improving" && <TrendingUp className="w-4 h-4 text-green-600" />}
-                      {trend === "declining" && <TrendingDown className="w-4 h-4 text-red-600" />}
-                      {trend === "stable" && <Minus className="w-4 h-4 text-sage-500" />}
-                      <span className={cn(
-                        "text-sm capitalize",
-                        trend === "improving" ? "text-green-600" : 
-                        trend === "declining" ? "text-red-600" : "text-sage-500"
-                      )}>
-                        {trend}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="w-20 h-20 rounded-full bg-white/50 flex items-center justify-center">
-                    <div 
-                      className="w-16 h-16 rounded-full flex items-center justify-center"
-                      style={{
-                        background: `conic-gradient(#788A63 ${wellnessScore}%, #E8E4DE ${wellnessScore}%)`
-                      }}
-                    >
-                      <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center">
-                        <Sparkles className="w-6 h-6 text-sage-500" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Stats Grid */}
-            <div className="grid grid-cols-3 gap-3">
-              {/* Days Counter */}
-              <Card className="bg-gradient-to-br from-amber-50 to-amber-100 border-amber-200">
-                <CardContent className="p-3 text-center">
-                  <div className="w-10 h-10 mx-auto mb-1 rounded-full bg-amber-400/20 flex items-center justify-center">
-                    <Calendar className="w-5 h-5 text-amber-600" />
-                  </div>
-                  <p className="text-2xl font-bold text-amber-700">{daysWithSahara}</p>
-                  <p className="text-[10px] text-amber-600 font-medium">Days</p>
-                </CardContent>
-              </Card>
-
-              {/* Chat Streak */}
-              <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
-                <CardContent className="p-3 text-center">
-                  <div className="w-10 h-10 mx-auto mb-1 rounded-full bg-orange-400/20 flex items-center justify-center">
-                    <Flame className="w-5 h-5 text-orange-500" />
-                  </div>
-                  <p className="text-2xl font-bold text-orange-700">{dashboardData?.chatStreak || 0}</p>
-                  <p className="text-[10px] text-orange-600 font-medium">Streak</p>
-                </CardContent>
-              </Card>
-
-              {/* Sessions */}
-              <Card className="bg-gradient-to-br from-sage-50 to-sage-100 border-sage-200">
-                <CardContent className="p-3 text-center">
-                  <div className="w-10 h-10 mx-auto mb-1 rounded-full bg-sage-400/20 flex items-center justify-center">
-                    <MessageCircle className="w-5 h-5 text-sage-600" />
-                  </div>
-                  <p className="text-2xl font-bold text-sage-700">{dashboardData?.totalSessions || 0}</p>
-                  <p className="text-[10px] text-sage-600 font-medium">Sessions</p>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Pet Bond */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-sage-600 flex items-center gap-2">
-                  <Heart className="w-4 h-4 text-pink-500" />
-                  Bond with {activePet?.name || "your companion"}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-sage-600">Level {Math.floor((dashboardData?.petBondLevel || 0) / 10) + 1}</span>
-                    <span className="text-sage-500">{dashboardData?.petBondLevel || 0}/100</span>
-                  </div>
-                  <div className="h-3 bg-beige-200 rounded-full overflow-hidden">
-                    <motion.div
-                      className="h-full bg-gradient-to-r from-pink-400 to-pink-500 rounded-full"
-                      initial={{ width: 0 }}
-                      animate={{ width: `${dashboardData?.petBondLevel || 0}%` }}
-                      transition={{ duration: 1, ease: "easeOut" }}
-                    />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Emotional Keywords */}
-            {dashboardData?.emotionalKeywords && dashboardData.emotionalKeywords.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm font-medium text-sage-600">
-                    Your Emotional Landscape
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex flex-wrap gap-2">
-                    {dashboardData.emotionalKeywords.map((keyword, index) => (
-                      <motion.span
-                        key={keyword.word}
-                        initial={{ opacity: 0, scale: 0.8 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ delay: 0.1 + index * 0.05 }}
-                        className="px-3 py-1.5 bg-sage-100 text-sage-700 rounded-full text-sm"
-                      >
-                        {keyword.word}
-                      </motion.span>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </motion.div>
-        )}
-
-        {activeTab === "analytics" && (
-          <motion.div
-            key="analytics"
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 20 }}
-            className="space-y-4"
-          >
-            {/* Engagement Health Index */}
-            <Card className="bg-gradient-to-r from-sage-100 to-emerald-50 border-none">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-sage-600 flex items-center gap-2">
-                  <Activity className="w-4 h-4 text-sage-500" />
-                  Engagement Health Index
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-4xl font-bold text-sage-800">
-                      {analyticsData?.engagementHealth.overallScore || 50}
-                    </p>
-                    <div className="flex items-center gap-1 mt-1">
-                      {analyticsData?.engagementHealth.trend === "improving" && (
-                        <TrendingUp className="w-4 h-4 text-green-600" />
-                      )}
-                      {analyticsData?.engagementHealth.trend === "declining" && (
-                        <TrendingDown className="w-4 h-4 text-amber-600" />
-                      )}
-                      {analyticsData?.engagementHealth.trend === "stable" && (
-                        <Minus className="w-4 h-4 text-sage-500" />
-                      )}
-                      <span className={cn(
-                        "text-sm capitalize",
-                        analyticsData?.engagementHealth.trend === "improving" ? "text-green-600" : 
-                        analyticsData?.engagementHealth.trend === "declining" ? "text-amber-600" : "text-sage-500"
-                      )}>
-                        {analyticsData?.engagementHealth.trend || "stable"}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="w-20 h-20 rounded-full bg-white/50 flex items-center justify-center">
-                    <div 
-                      className="w-16 h-16 rounded-full flex items-center justify-center"
-                      style={{
-                        background: `conic-gradient(#788A63 ${analyticsData?.engagementHealth.overallScore || 50}%, #E8E4DE ${analyticsData?.engagementHealth.overallScore || 50}%)`
-                      }}
-                    >
-                      <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center">
-                        <Shield className="w-6 h-6 text-sage-500" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                
-                {/* Sub-scores */}
-                <div className="grid grid-cols-2 gap-2 mt-4">
-                  <div className="bg-white/50 rounded-lg p-2">
-                    <p className="text-xs text-sage-500">Consistency</p>
-                    <p className="text-lg font-semibold text-sage-700">
-                      {analyticsData?.engagementHealth.consistencyScore || 50}%
-                    </p>
-                  </div>
-                  <div className="bg-white/50 rounded-lg p-2">
-                    <p className="text-xs text-sage-500">Depth</p>
-                    <p className="text-lg font-semibold text-sage-700">
-                      {analyticsData?.engagementHealth.depthScore || 50}%
-                    </p>
-                  </div>
-                  <div className="bg-white/50 rounded-lg p-2">
-                    <p className="text-xs text-sage-500">Stability</p>
-                    <p className="text-lg font-semibold text-sage-700">
-                      {analyticsData?.engagementHealth.sentimentStabilityScore || 50}%
-                    </p>
-                  </div>
-                  <div className="bg-white/50 rounded-lg p-2">
-                    <p className="text-xs text-sage-500">Quality</p>
-                    <p className="text-lg font-semibold text-sage-700">
-                      {analyticsData?.engagementHealth.interactionQualityScore || 50}%
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Sentiment Trajectory */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-sage-600 flex items-center gap-2">
-                  <TrendingUp className="w-4 h-4 text-sage-500" />
-                  Sentiment Trajectory
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <p className="text-2xl font-bold text-sage-800">
-                      {((analyticsData?.sentimentTrajectory.averageSentiment || 0) * 100).toFixed(0)}%
-                    </p>
-                    <p className="text-xs text-sage-500">Average Positivity</p>
-                  </div>
-                  <div className={cn(
-                    "px-3 py-1 rounded-full text-sm font-medium",
-                    analyticsData?.sentimentTrajectory.trend === "improving" 
-                      ? "bg-green-100 text-green-700"
-                      : analyticsData?.sentimentTrajectory.trend === "declining"
-                      ? "bg-amber-100 text-amber-700"
-                      : "bg-sage-100 text-sage-700"
-                  )}>
-                    {analyticsData?.sentimentTrajectory.trend === "improving" && "↑ Improving"}
-                    {analyticsData?.sentimentTrajectory.trend === "declining" && "↓ Needs attention"}
-                    {analyticsData?.sentimentTrajectory.trend === "stable" && "→ Stable"}
-                  </div>
-                </div>
-                
-                {/* Simple visual representation */}
-                <div className="h-2 bg-beige-200 rounded-full overflow-hidden">
-                  <motion.div
-                    className={cn(
-                      "h-full rounded-full",
-                      analyticsData?.sentimentTrajectory.trend === "improving" 
-                        ? "bg-gradient-to-r from-sage-400 to-green-500"
-                        : analyticsData?.sentimentTrajectory.trend === "declining"
-                        ? "bg-gradient-to-r from-amber-400 to-amber-500"
-                        : "bg-gradient-to-r from-sage-400 to-sage-500"
-                    )}
+        {/* Stats Row */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          {stats.map((stat, i) => (
+            <motion.div
+              key={stat.title}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.1 }}
+              className={`bg-gradient-to-br ${stat.color} backdrop-blur-sm rounded-2xl p-5 border border-white/50 dark:border-white/10 shadow-sm`}
+            >
+              <div className="flex items-start justify-between mb-3">
+                <h3 className="text-sm font-semibold text-[var(--text)]">{stat.title}</h3>
+                <span className={cn(
+                  "text-xs font-medium px-2 py-0.5 rounded-full flex items-center gap-1",
+                  stat.positive ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400" : "bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400"
+                )}>
+                  {stat.positive ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                  {stat.change}
+                </span>
+              </div>
+              <p className="text-3xl font-bold text-[var(--text)] mb-1">{stat.value}</p>
+              <p className="text-xs text-[var(--text-muted)] mb-3">{stat.subtitle}</p>
+              
+              {stat.progress !== undefined && (
+                <div className="h-2 bg-white/50 dark:bg-white/10 rounded-full overflow-hidden">
+                  <motion.div 
+                    className={`h-full ${stat.barColor} rounded-full`}
                     initial={{ width: 0 }}
-                    animate={{ width: `${Math.max(10, ((analyticsData?.sentimentTrajectory.averageSentiment || 0) + 1) * 50)}%` }}
-                    transition={{ duration: 1, ease: "easeOut" }}
+                    animate={{ width: `${stat.progress}%` }}
+                    transition={{ duration: 1, delay: 0.5 }}
                   />
                 </div>
-              </CardContent>
-            </Card>
-
-            {/* Pet Bond Level */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-sage-600 flex items-center gap-2">
-                  <Heart className="w-4 h-4 text-pink-500" />
-                  Companion Bond
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center gap-4">
-                  <div className="flex-1">
-                    <p className="text-2xl font-bold text-sage-800">
-                      {analyticsData?.petBond.bondLevel || dashboardData?.petBondLevel || 0}%
-                    </p>
-                    <div className="h-2 bg-beige-200 rounded-full overflow-hidden mt-2">
-                      <motion.div
-                        className="h-full bg-gradient-to-r from-pink-400 to-pink-500 rounded-full"
-                        initial={{ width: 0 }}
-                        animate={{ width: `${analyticsData?.petBond.bondLevel || dashboardData?.petBondLevel || 0}%` }}
-                        transition={{ duration: 1, ease: "easeOut" }}
-                      />
+              )}
+              
+              {stat.items && (
+                <div className="space-y-1.5 mt-2">
+                  {stat.items.map((item, idx) => (
+                    <div key={idx} className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                      {item}
                     </div>
-                  </div>
+                  ))}
                 </div>
-                
-                {/* Bond breakdown */}
-                <div className="grid grid-cols-3 gap-2 mt-3">
-                  <div className="text-center">
-                    <p className="text-lg font-semibold text-sage-700">
-                      +{analyticsData?.petBond.consistencyBonus || 0}
-                    </p>
-                    <p className="text-[10px] text-sage-500">Consistency</p>
+              )}
+            </motion.div>
+          ))}
+        </div>
+
+        {/* Main Content Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+          {/* Emotional State Chart */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="lg:col-span-2 bg-white/70 dark:bg-slate-900/70 backdrop-blur-sm rounded-2xl p-5 border border-white/50 dark:border-white/10 shadow-sm"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-semibold text-[var(--text)]">Emotional State</h3>
+                <p className="text-xs text-[var(--text-muted)]">Based on your daily check-ins and activities</p>
+              </div>
+              <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 rounded-lg p-1">
+                {["Week", "Month", "Year"].map((period, idx) => (
+                  <button
+                    key={period}
+                    className={cn(
+                      "px-3 py-1 text-xs font-medium rounded-md transition-all",
+                      idx === 0 ? "bg-white dark:bg-slate-700 shadow-sm text-[var(--text)]" : "text-[var(--text-muted)]"
+                    )}
+                  >
+                    {period}
+                  </button>
+                ))}
+              </div>
+            </div>
+            
+            {/* Chart */}
+            <div className="flex items-end justify-between gap-2 h-40 mb-2">
+              {weeklyMoods.map((mood, i) => (
+                <div key={i} className="flex-1 flex flex-col items-center gap-2">
+                  <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-lg overflow-hidden h-32 flex items-end">
+                    <motion.div
+                      className="w-full bg-gradient-to-t from-blue-500 to-blue-400 rounded-lg"
+                      initial={{ height: 0 }}
+                      animate={{ height: `${mood}%` }}
+                      transition={{ duration: 0.5, delay: i * 0.1 }}
+                    />
                   </div>
-                  <div className="text-center">
-                    <p className="text-lg font-semibold text-sage-700">
-                      +{analyticsData?.petBond.emotionalOpennessBonus || 0}
-                    </p>
-                    <p className="text-[10px] text-sage-500">Openness</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-lg font-semibold text-sage-700">
-                      +{analyticsData?.petBond.positiveMomentsBonus || 0}
-                    </p>
-                    <p className="text-[10px] text-sage-500">Positivity</p>
-                  </div>
+                  <span className="text-[10px] text-[var(--text-muted)]">{weekDays[i]}</span>
                 </div>
-              </CardContent>
-            </Card>
+              ))}
+            </div>
 
-            {/* Emotional Keywords */}
-            {analyticsData?.emotionalKeywords.keywords && analyticsData.emotionalKeywords.keywords.length > 0 && (
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-sage-600">
-                    Emotional Themes
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex flex-wrap gap-2">
-                    {analyticsData.emotionalKeywords.keywords.slice(0, 8).map((keyword, index) => (
-                      <motion.span
-                        key={keyword.word}
-                        initial={{ opacity: 0, scale: 0.8 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ delay: 0.1 + index * 0.05 }}
-                        className={cn(
-                          "px-3 py-1.5 rounded-full text-sm flex items-center gap-1",
-                          keyword.trend === "up" ? "bg-green-100 text-green-700" :
-                          keyword.trend === "down" ? "bg-amber-100 text-amber-700" :
-                          "bg-sage-100 text-sage-700"
-                        )}
-                      >
-                        {keyword.word}
-                        {keyword.trend === "up" && <TrendingUp className="w-3 h-3" />}
-                        {keyword.trend === "down" && <TrendingDown className="w-3 h-3" />}
-                      </motion.span>
-                    ))}
-                  </div>
-                  <p className="text-xs text-sage-500 mt-3">
-                    Dominant theme: <span className="font-medium capitalize">{analyticsData.emotionalKeywords.dominantCategory}</span>
-                  </p>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Wellness Signals */}
-            {analyticsData?.riskSignals && analyticsData.riskSignals.length > 0 && (
-              <Card className="border-amber-200 bg-amber-50/50">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-amber-700 flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4" />
-                    Wellness Signals
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    {analyticsData.riskSignals.slice(0, 2).map((signal, index) => (
-                      <div key={index} className="p-3 bg-white rounded-lg">
-                        <p className="text-sm text-sage-700">{signal.suggestedAction}</p>
-                        <p className="text-xs text-sage-500 mt-1">
-                          {signal.indicators.slice(0, 2).join(" • ")}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Summary Card */}
-            {analyticsData?.summary && (
-              <Card className="bg-gradient-to-r from-beige-100 to-sage-50">
-                <CardContent className="pt-4">
-                  <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-full bg-sage-200 flex items-center justify-center flex-shrink-0">
-                      <Sparkles className="w-5 h-5 text-sage-600" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-sage-800">
-                        {analyticsData.summary.positiveHighlight || "Keep going! Every conversation helps build your wellness journey."}
-                      </p>
-                      {analyticsData.summary.primaryConcern && (
-                        <p className="text-xs text-sage-600 mt-1">
-                          {analyticsData.summary.primaryConcern}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* No data message */}
-            {!analyticsData && (
-              <Card>
-                <CardContent className="py-8 text-center">
-                  <Activity className="w-12 h-12 text-sage-300 mx-auto mb-3" />
-                  <p className="text-sage-600">Start chatting to see your insights</p>
-                  <p className="text-sage-400 text-sm mt-1">
-                    Your analytics will appear here as you have more conversations
-                  </p>
-                </CardContent>
-              </Card>
+            {/* Mood Check-in */}
+            {!todayMood && (
+              <motion.button
+                onClick={() => setShowMoodPicker(true)}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                className="w-full mt-4 p-3 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-xl font-medium text-sm flex items-center justify-center gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                Log Today&apos;s Mood
+              </motion.button>
             )}
           </motion.div>
-        )}
 
-        {activeTab === "journal" && (
+          {/* Urgent Support Card */}
           <motion.div
-            key="journal"
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 20 }}
-            className="space-y-4"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4 }}
+            className="bg-gradient-to-br from-teal-500 to-cyan-600 rounded-2xl p-5 text-white relative overflow-hidden"
           >
-            {/* Journal Header */}
-            <div className="flex items-center justify-between">
-              <p className="text-sage-600">Reflect on your journey</p>
-              <Button onClick={() => setShowEditor(true)} size="sm">
-                <Plus className="w-4 h-4 mr-1" />
-                New Entry
+            <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2" />
+            <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/10 rounded-full translate-y-1/2 -translate-x-1/2" />
+            
+            <div className="relative z-10">
+              <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center mb-4">
+                <Shield className="w-5 h-5" />
+              </div>
+              <h3 className="text-lg font-bold mb-2">Urgent Support</h3>
+              <p className="text-white/80 text-sm mb-4">Quick access to crisis hotlines when you need immediate help</p>
+              
+              <Link href="/consult">
+                <Button className="w-full bg-white/20 hover:bg-white/30 text-white border-0 rounded-xl">
+                  Get help now
+                </Button>
+              </Link>
+            </div>
+          </motion.div>
+        </div>
+
+        {/* My Exercises Section */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
+          className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-sm rounded-2xl p-5 border border-white/50 dark:border-white/10 shadow-sm mb-6"
+        >
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-lg font-semibold text-[var(--text)]">My Exercises</h3>
+              <p className="text-xs text-[var(--text-muted)]">Activities to support your mental health journey</p>
+            </div>
+            <Link href="/tools">
+              <Button variant="outline" size="sm" className="rounded-xl text-xs">
+                View all <ChevronRight className="w-3 h-3 ml-1" />
               </Button>
-            </div>
+            </Link>
+          </div>
 
-            {/* Search */}
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-sage-400" />
-              <input
-                type="text"
-                placeholder="Search entries..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-white border border-beige-200 rounded-xl text-sage-800 placeholder:text-sage-400 focus:outline-none focus:ring-2 focus:ring-sage-300"
-              />
-            </div>
-
-            {/* Entries List */}
-            <div className="space-y-3">
-              {filteredEntries.length === 0 ? (
-                <div className="text-center py-12">
-                  <p className="text-sage-500">No journal entries yet.</p>
-                  <p className="text-sage-400 text-sm mt-1">Start writing to track your thoughts.</p>
+          <div className="space-y-3">
+            {exercises.map((exercise, i) => (
+              <motion.div
+                key={exercise.id}
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.6 + i * 0.1 }}
+                className="flex items-center gap-4 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <div className="w-10 h-10 rounded-xl bg-white dark:bg-slate-700 flex items-center justify-center text-xl shadow-sm">
+                  {exercise.icon}
                 </div>
-              ) : (
-                filteredEntries.map((entry, index) => {
-                  const sentimentInfo = entry.sentiment ? getCategoryInfo(entry.sentiment.category) : null;
-                  return (
-                    <motion.div
-                      key={entry.id}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: index * 0.05 }}
-                    >
-                      <Card className="overflow-hidden">
-                        <CardContent className="p-4">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-1">
-                                <span className="text-lg">{entry.mood}</span>
-                                <h3 className="font-semibold text-sage-800 truncate">{entry.title}</h3>
-                              </div>
-                              <p className="text-sage-600 text-sm line-clamp-2 mb-2">{entry.content}</p>
-                              <div className="flex items-center gap-3 text-xs">
-                                <span className="flex items-center gap-1 text-sage-400">
-                                  <Calendar className="w-3 h-3" />
-                                  {formatDate(entry.createdAt)}
-                                </span>
-                                {sentimentInfo && (
-                                  <span className={cn("px-2 py-0.5 rounded-full", sentimentInfo.bgColor, sentimentInfo.color)}>
-                                    {sentimentInfo.emoji} {sentimentInfo.label}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                            <div className="flex gap-1">
-                              <button
-                                onClick={() => handleEditEntry(entry)}
-                                className="p-2 text-sage-400 hover:text-sage-600 hover:bg-sage-50 rounded-lg transition-colors"
-                              >
-                                <Edit3 className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteEntry(entry.id)}
-                                className="p-2 text-sage-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </motion.div>
-                  );
-                })
+                <div className="flex-1 min-w-0">
+                  <h4 className="font-medium text-[var(--text)] text-sm">{exercise.name}</h4>
+                  <div className="flex items-center gap-4 mt-1">
+                    <div className="flex-1 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden max-w-[100px]">
+                      <div 
+                        className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full"
+                        style={{ width: `${exercise.progress}%` }}
+                      />
+                    </div>
+                    <span className="text-xs text-[var(--text-muted)]">{exercise.progress}%</span>
+                  </div>
+                </div>
+                <div className="text-right hidden sm:block">
+                  <p className="text-xs text-[var(--text-muted)]">{exercise.duration}</p>
+                  <p className="text-[10px] text-[var(--text-light)]">{exercise.category}</p>
+                </div>
+                <Play className="w-4 h-4 text-[var(--text-muted)]" />
+              </motion.div>
+            ))}
+          </div>
+        </motion.div>
+
+        {/* Journal Section */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.6 }}
+          className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-sm rounded-2xl p-5 border border-white/50 dark:border-white/10 shadow-sm mb-6"
+        >
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-lg font-semibold text-[var(--text)]">My Journal</h3>
+              <p className="text-xs text-[var(--text-muted)]">Track your thoughts and emotions</p>
+            </div>
+            <Button 
+              onClick={() => setShowJournalModal(true)}
+              className="rounded-xl text-xs bg-gradient-to-r from-indigo-500 to-purple-500 text-white"
+            >
+              <PenLine className="w-3 h-3 mr-1" /> Write Entry
+            </Button>
+          </div>
+
+          {journalEntries.length === 0 ? (
+            <div className="text-center py-8">
+              <FileText className="w-10 h-10 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
+              <p className="text-sm text-[var(--text-muted)]">No journal entries yet</p>
+              <p className="text-xs text-[var(--text-light)]">Start writing to track your thoughts</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {journalEntries.slice(0, 3).map((entry, i) => (
+                <motion.div
+                  key={entry.id}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.1 * i }}
+                  className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl"
+                >
+                  <div className="flex items-start justify-between mb-2">
+                    <div>
+                      <h4 className="font-medium text-[var(--text)] text-sm">{entry.title}</h4>
+                      <p className="text-[10px] text-[var(--text-muted)]">
+                        {entry.createdAt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {entry.analysis && (
+                        <span 
+                          className="text-[10px] px-2 py-0.5 rounded-full"
+                          style={{ 
+                            backgroundColor: `${getEmotionColor(entry.analysis.emotional.primaryTone)}20`,
+                            color: getEmotionColor(entry.analysis.emotional.primaryTone)
+                          }}
+                        >
+                          {entry.analysis.emotional.primaryTone}
+                        </span>
+                      )}
+                      <span className="text-lg">{entry.mood}</span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-[var(--text-muted)] line-clamp-2">{entry.content}</p>
+                </motion.div>
+              ))}
+              {journalEntries.length > 3 && (
+                <p className="text-xs text-center text-[var(--text-muted)]">
+                  + {journalEntries.length - 3} more entries
+                </p>
               )}
             </div>
+          )}
+        </motion.div>
+
+        {/* Quick Actions */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {[
+            { title: "Talk to Luna", icon: MessageCircle, color: "from-violet-500 to-purple-600", href: "/chat" },
+            { title: "CBT Tools", icon: Brain, color: "from-emerald-500 to-teal-600", href: "/tools" },
+            { title: "Learn", icon: BookOpen, color: "from-amber-500 to-orange-600", href: "/learn" },
+            { title: "Community", icon: Heart, color: "from-pink-500 to-rose-600", href: "/community" },
+          ].map((action, i) => (
+            <Link key={action.title} href={action.href}>
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: 0.7 + i * 0.1 }}
+                whileHover={{ y: -4, scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                className={`bg-gradient-to-br ${action.color} rounded-2xl p-4 text-white cursor-pointer shadow-lg`}
+              >
+                <action.icon className="w-6 h-6 mb-2" />
+                <p className="font-semibold text-sm">{action.title}</p>
+              </motion.div>
+            </Link>
+          ))}
+        </div>
+      </div>
+
+      {/* Mood Picker Modal */}
+      <AnimatePresence>
+        {showMoodPicker && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white dark:bg-slate-900 rounded-2xl p-6 max-w-sm w-full shadow-2xl"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-[var(--text)]">How are you feeling?</h3>
+                <button onClick={() => setShowMoodPicker(false)}>
+                  <X className="w-5 h-5 text-[var(--text-muted)]" />
+                </button>
+              </div>
+              <div className="flex justify-between gap-2">
+                {[
+                  { emoji: "😢", label: "Bad", value: 1 },
+                  { emoji: "😔", label: "Low", value: 2 },
+                  { emoji: "😐", label: "Okay", value: 3 },
+                  { emoji: "🙂", label: "Good", value: 4 },
+                  { emoji: "😊", label: "Great", value: 5 },
+                ].map((mood) => (
+                  <button
+                    key={mood.value}
+                    onClick={() => handleMoodSelect(mood.value)}
+                    className="flex-1 flex flex-col items-center gap-2 p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-all"
+                  >
+                    <span className="text-3xl">{mood.emoji}</span>
+                    <span className="text-xs text-[var(--text-muted)]">{mood.label}</span>
+                  </button>
+                ))}
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Interactive Pet Modal */}
-      <InteractivePet 
-        isOpen={showInteractivePet} 
-        onClose={() => setShowInteractivePet(false)} 
-      />
-
-      {/* Journal Editor Modal */}
-      <Modal
-        isOpen={showEditor}
-        onClose={resetEditor}
-        title={editingEntry ? "Edit Entry" : "New Journal Entry"}
-      >
-        <div className="space-y-4">
-          {/* Prompt suggestion */}
-          {!editingEntry && (
-            <div className="p-3 bg-sage-50 rounded-lg flex items-start gap-2">
-              <Sparkles className="w-4 h-4 text-sage-500 mt-0.5 flex-shrink-0" />
-              <p className="text-sm text-sage-600 italic">{currentPrompt}</p>
-            </div>
-          )}
-
-          {/* Title */}
-          <div>
-            <label className="block text-sm font-medium text-sage-700 mb-1">Title</label>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Give your entry a title..."
-              className="w-full px-3 py-2 bg-white border border-beige-200 rounded-lg text-sage-800 placeholder:text-sage-400 focus:outline-none focus:ring-2 focus:ring-sage-300"
-            />
-          </div>
-
-          {/* Mood selector */}
-          <div>
-            <label className="block text-sm font-medium text-sage-700 mb-2">How are you feeling?</label>
-            <div className="flex flex-wrap gap-2">
-              {moodOptions.map((mood) => (
-                <button
-                  key={mood.emoji}
-                  onClick={() => setSelectedMood(mood.emoji)}
-                  className={cn(
-                    "px-3 py-1.5 rounded-full text-sm transition-all",
-                    selectedMood === mood.emoji
-                      ? mood.color + " ring-2 ring-offset-1 ring-sage-400"
-                      : "bg-beige-100 text-sage-600 hover:bg-beige-200"
-                  )}
-                >
-                  {mood.emoji} {mood.label}
+      {/* Journal Entry Modal */}
+      <AnimatePresence>
+        {showJournalModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white dark:bg-slate-900 rounded-2xl p-6 max-w-md w-full shadow-2xl max-h-[90vh] overflow-y-auto"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-[var(--text)] flex items-center gap-2">
+                  <PenLine className="w-5 h-5 text-indigo-500" />
+                  New Journal Entry
+                </h3>
+                <button onClick={() => setShowJournalModal(false)}>
+                  <X className="w-5 h-5 text-[var(--text-muted)]" />
                 </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Content */}
-          <div>
-            <label className="block text-sm font-medium text-sage-700 mb-1">Your thoughts</label>
-            <textarea
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              placeholder="Write freely..."
-              rows={6}
-              className="w-full px-3 py-2 bg-white border border-beige-200 rounded-lg text-sage-800 placeholder:text-sage-400 focus:outline-none focus:ring-2 focus:ring-sage-300 resize-none"
-            />
-          </div>
-
-          {/* Actions */}
-          <div className="flex gap-3 pt-2">
-            <Button variant="ghost" onClick={resetEditor} className="flex-1">
-              <X className="w-4 h-4 mr-1" />
-              Cancel
-            </Button>
-            <Button onClick={handleSaveEntry} className="flex-1" disabled={!title.trim() || !content.trim()}>
-              <Save className="w-4 h-4 mr-1" />
-              {editingEntry ? "Update" : "Save"}
-            </Button>
-          </div>
-        </div>
-      </Modal>
+              </div>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-[var(--text)] mb-1">Title</label>
+                  <input
+                    type="text"
+                    placeholder="Give your entry a title..."
+                    value={newEntry.title}
+                    onChange={(e) => setNewEntry({ ...newEntry, title: e.target.value })}
+                    className="w-full px-4 py-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[var(--text)] placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-[var(--text)] mb-1">How are you feeling?</label>
+                  <div className="flex gap-2">
+                    {moodOptions.map((mood) => (
+                      <button
+                        key={mood.emoji}
+                        onClick={() => setNewEntry({ ...newEntry, mood: mood.emoji })}
+                        className={cn(
+                          "flex-1 py-2 rounded-xl text-xl transition-all",
+                          newEntry.mood === mood.emoji 
+                            ? "bg-indigo-100 dark:bg-indigo-900/30 ring-2 ring-indigo-500 scale-110" 
+                            : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700"
+                        )}
+                      >
+                        {mood.emoji}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-[var(--text)] mb-1">Your thoughts</label>
+                  <textarea
+                    placeholder="Write freely about how you're feeling, what's on your mind..."
+                    value={newEntry.content}
+                    onChange={(e) => setNewEntry({ ...newEntry, content: e.target.value })}
+                    rows={5}
+                    className="w-full px-4 py-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[var(--text)] placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                  />
+                  <p className="text-[10px] text-[var(--text-muted)] mt-1">
+                    AI will analyze your entry for emotional patterns and insights
+                  </p>
+                </div>
+                
+                <div className="flex gap-3 pt-2">
+                  <Button
+                    onClick={handleSaveJournal}
+                    disabled={!newEntry.title || !newEntry.content}
+                    className="flex-1 bg-gradient-to-r from-indigo-500 to-purple-500 text-white rounded-xl"
+                  >
+                    <Sparkles className="w-4 h-4 mr-2" />
+                    Save Entry
+                  </Button>
+                  <Button
+                    onClick={() => setShowJournalModal(false)}
+                    variant="outline"
+                    className="rounded-xl"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

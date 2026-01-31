@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, isDemoMode } from "@/lib/supabase/client";
 import type { Pet, UserPet, PetAnimationState } from "@/types";
 
 // Default pets for demo mode - 1 dog and 1 cat only
@@ -131,6 +131,21 @@ export const usePetStore = create<PetState>((set, get) => ({
     set({ isLoading: true });
     
     try {
+      // Check if we're in demo mode first
+      if (isDemoMode()) {
+        // In demo mode, just use default pet
+        const { pets } = get();
+        if (pets.length === 0) {
+          await get().fetchPets();
+        }
+        const defaultPet = get().pets.find((p) => p.isDefault) || get().pets[0];
+        if (defaultPet) {
+          set({ activePet: defaultPet });
+        }
+        set({ isLoading: false });
+        return;
+      }
+
       const { data, error } = await supabase
         .from("user_pets")
         .select(`
@@ -177,7 +192,19 @@ export const usePetStore = create<PetState>((set, get) => ({
         }
       }
     } catch (error) {
-      console.error("Error fetching user pet:", error);
+      // Only log if it's not a demo mode scenario
+      if (!isDemoMode()) {
+        console.error("Error fetching user pet:", error);
+      }
+      // Fallback to default pet
+      const { pets } = get();
+      if (pets.length === 0) {
+        await get().fetchPets();
+      }
+      const defaultPet = get().pets.find((p) => p.isDefault) || get().pets[0];
+      if (defaultPet) {
+        set({ activePet: defaultPet });
+      }
     } finally {
       set({ isLoading: false });
     }

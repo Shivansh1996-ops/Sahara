@@ -49,16 +49,21 @@ export default function HabitsPage() {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
       const parsed = JSON.parse(stored);
-      setHabits(parsed.map((h: Habit) => ({
-        ...h,
-        createdAt: new Date(h.createdAt),
-        completions: h.completions.map((c: { completedAt: string | Date }) => ({
-          ...c,
-          completedAt: new Date(c.completedAt)
-        }))
-      })));
+      // Defer state update to avoid synchronous setState inside effect
+      setTimeout(() => {
+        setHabits(parsed.map((h: Habit) => ({
+          ...h,
+          createdAt: new Date(h.createdAt),
+          completions: h.completions.map((c: { completedAt: string | Date }) => ({
+            ...c,
+            completedAt: new Date(c.completedAt)
+          }))
+        })));
+        setIsLoading(false);
+      }, 0);
+    } else {
+      setTimeout(() => setIsLoading(false), 0);
     }
-    setIsLoading(false);
   }, []);
 
   // Save habits to localStorage
@@ -140,59 +145,68 @@ export default function HabitsPage() {
 
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-sage-50/50 via-beige-50 to-soft-blue-50/30 pb-24">
+    <div className="min-h-screen pb-24 bg-gradient-to-b from-[var(--bg)] to-[var(--card)]">
       {/* Encouragement Toast */}
       <AnimatePresence>
         {encouragementMessage && (
           <motion.div
-            initial={{ opacity: 0, y: -50 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -50 }}
-            className="fixed top-4 left-4 right-4 z-50 bg-sage-600 text-white p-4 rounded-2xl shadow-lg"
+            initial={{ opacity: 0, y: -50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -50, scale: 0.9 }}
+            className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-gradient-to-r from-[var(--primary)] to-[var(--primary-light)] text-white px-6 py-3 rounded-full shadow-lg shadow-[var(--primary)]/20"
           >
-            <div className="flex items-center gap-3">
-              <Sparkles className="w-6 h-6" />
-              <p className="font-medium">{encouragementMessage}</p>
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-5 h-5" />
+              <p className="font-medium text-sm">{encouragementMessage}</p>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="relative overflow-hidden bg-gradient-to-br from-sage-600 via-sage-500 to-emerald-500 px-4 py-6 text-white"
-      >
-        <div className="relative z-10">
-          <div className="flex items-center gap-2 mb-2">
-            <Target className="w-5 h-5 opacity-80" />
-            <span className="text-sm font-medium opacity-80">Habit Coach</span>
+      <div className="max-w-2xl mx-auto px-4">
+        {/* Header */}
+        <motion.div 
+          initial={{ opacity: 0, y: -10 }} 
+          animate={{ opacity: 1, y: 0 }} 
+          className="pt-6 pb-5"
+        >
+          <div className="flex items-center gap-4 mb-4">
+            <motion.div 
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ type: "spring", bounce: 0.5 }}
+              className="w-14 h-14 rounded-2xl flex items-center justify-center bg-gradient-to-br from-[var(--primary)] to-[var(--primary-light)] shadow-lg"
+            >
+              <Target className="w-7 h-7 text-white" />
+            </motion.div>
+            <div>
+              <h1 className="text-2xl font-bold text-[var(--text)]">Habits</h1>
+              <p className="text-sm text-[var(--text-muted)]">Small steps, big changes</p>
+            </div>
           </div>
-          <h1 className="text-xl font-bold mb-1">Build Better Habits</h1>
-          <p className="text-white/80 text-sm">Small steps lead to big changes</p>
 
           {/* Stats */}
-          <div className="flex gap-3 mt-4">
-            <div className="flex items-center gap-1.5 bg-white/10 rounded-full px-3 py-1">
-              <Check className="w-4 h-4" />
-              <span className="text-sm">{completedToday}/{todayHabits.length} today</span>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="bg-gradient-to-br from-emerald-500/10 to-green-500/10 rounded-2xl p-4 border border-[var(--border)] text-center">
+              <Check className="w-5 h-5 mx-auto mb-2 text-emerald-500" />
+              <p className="text-xl font-bold text-[var(--text)]">{completedToday}/{todayHabits.length}</p>
+              <p className="text-xs text-[var(--text-muted)] font-medium">Today</p>
             </div>
-            <div className="flex items-center gap-1.5 bg-white/10 rounded-full px-3 py-1">
-              <Flame className="w-4 h-4 text-orange-300" />
-              <span className="text-sm">{totalStreak} streak</span>
+            <div className="bg-gradient-to-br from-amber-500/10 to-orange-500/10 rounded-2xl p-4 border border-[var(--border)] text-center">
+              <Flame className="w-5 h-5 mx-auto mb-2 text-amber-500" />
+              <p className="text-xl font-bold text-[var(--text)]">{totalStreak}</p>
+              <p className="text-xs text-[var(--text-muted)] font-medium">Streak</p>
             </div>
-            <div className="flex items-center gap-1.5 bg-white/10 rounded-full px-3 py-1">
-              <Trophy className="w-4 h-4 text-amber-300" />
-              <span className="text-sm">{longestStreak} best</span>
+            <div className="bg-gradient-to-br from-yellow-500/10 to-amber-500/10 rounded-2xl p-4 border border-[var(--border)] text-center">
+              <Trophy className="w-5 h-5 mx-auto mb-2 text-yellow-500" />
+              <p className="text-xl font-bold text-[var(--text)]">{longestStreak}</p>
+              <p className="text-xs text-[var(--text-muted)] font-medium">Best</p>
             </div>
           </div>
-        </div>
-      </motion.div>
+        </motion.div>
 
-      <div className="p-4 space-y-4">
         {/* Tab Navigation */}
-        <div className="flex gap-1 p-1 bg-beige-100 rounded-xl">
+        <div className="flex gap-1 p-1.5 bg-[var(--card)] border border-[var(--border)] rounded-2xl mb-5 shadow-sm">
           {[
             { id: "today" as const, label: "Today", icon: Calendar },
             { id: "all" as const, label: "All Habits", icon: Target },
@@ -202,10 +216,10 @@ export default function HabitsPage() {
               key={id}
               onClick={() => setActiveTab(id)}
               className={cn(
-                "flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-sm font-medium transition-all",
+                "flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-sm font-medium transition-all",
                 activeTab === id
-                  ? "bg-white text-sage-800 shadow-sm"
-                  : "text-sage-500 hover:text-sage-700"
+                  ? "bg-gradient-to-r from-[var(--primary)] to-[var(--primary-light)] text-white shadow-md shadow-[var(--primary)]/20"
+                  : "text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-alt)]"
               )}
             >
               <Icon className="w-4 h-4" />

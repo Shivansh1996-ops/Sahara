@@ -95,51 +95,59 @@ export const useFeatureGateStore = create<FeatureGateState>((set, get) => ({
   },
 
   fetchFeatureGate: async (userId: string) => {
-    // Check daily progress from localStorage
-    const { todayChats, hasCompletedToday, isUnlocked } = getDailyProgress();
+    // Always unlock everything immediately - no 10 chat requirement
     
-    // Demo mode - create local feature gate
+    // Demo mode - create local feature gate with everything unlocked
     if (isDemoMode()) {
       set({
         featureGate: {
           id: "demo-gate",
           userId,
-          completedChats: todayChats,
-          unlockedAt: isUnlocked ? new Date() : null,
+          completedChats: UNLOCK_THRESHOLD, // Set to threshold so everything is unlocked
+          unlockedAt: new Date(), // Already unlocked
           createdAt: new Date(),
         },
-        unlockedFeatures: [],
+        unlockedFeatures: ["pet_selection", "dashboard", "peer_community", "full_profile"],
         isLoading: false,
-        completedChats: todayChats,
-        todayChats,
-        isFullyUnlocked: isUnlocked,
-        hasCompletedTodayRequirement: hasCompletedToday,
-        canAccessPetSelection: isUnlocked,
-        canAccessDashboard: isUnlocked,
-        canAccessCommunity: isUnlocked,
+        completedChats: UNLOCK_THRESHOLD,
+        todayChats: UNLOCK_THRESHOLD,
+        isFullyUnlocked: true, // Everything unlocked immediately
+        hasCompletedTodayRequirement: true,
+        canAccessPetSelection: true,
+        canAccessDashboard: true,
+        canAccessCommunity: true,
       });
       return;
     }
 
     const supabase = createClient();
     
-    set({ isLoading: true });
+    // Don't block - set loading false immediately and unlock everything
+    set({ 
+      isLoading: false,
+      isFullyUnlocked: true, // Unlock everything immediately
+      canAccessPetSelection: true,
+      canAccessDashboard: true,
+      canAccessCommunity: true,
+    });
     
     try {
-      // Get or create feature gate
-      let { data: gate, error } = await supabase
+      // Get or create feature gate with everything unlocked
+      let gate = null;
+      const { data: existingGate, error } = await supabase
         .from("feature_gates")
         .select("*")
         .eq("user_id", userId)
         .single();
       
       if (error && error.code === "PGRST116") {
-        // Create new feature gate
+        // Create new feature gate with everything unlocked
         const { data: newGate, error: createError } = await supabase
           .from("feature_gates")
           .insert({
             user_id: userId,
-            completed_chats: 0,
+            completed_chats: UNLOCK_THRESHOLD, // Set to threshold
+            unlocked_at: new Date().toISOString(), // Already unlocked
           })
           .select()
           .single();
@@ -148,38 +156,45 @@ export const useFeatureGateStore = create<FeatureGateState>((set, get) => ({
         gate = newGate;
       } else if (error) {
         throw error;
+      } else {
+        gate = existingGate;
       }
       
-      // Get unlocked features
-      const { data: features } = await supabase
-        .from("unlocked_features")
-        .select("feature")
-        .eq("user_id", userId);
+      // Get or create unlocked features - all features unlocked
+      const allFeatures: UnlockedFeature[] = ["pet_selection", "dashboard", "peer_community", "full_profile"];
       
-      const unlockedFeatures = (features || []).map((f) => f.feature as UnlockedFeature);
-      const chats = gate?.completed_chats ?? 0;
-      const fullyUnlocked = chats >= UNLOCK_THRESHOLD;
+      // Ensure all features are in database
+      for (const feature of allFeatures) {
+        await supabase
+          .from("unlocked_features")
+          .upsert({
+            user_id: userId,
+            feature,
+            unlocked_at: new Date().toISOString(),
+          }, {
+            onConflict: 'user_id,feature'
+          });
+      }
       
       set({
         featureGate: gate ? {
           id: gate.id,
           userId: gate.user_id,
-          completedChats: gate.completed_chats,
-          unlockedAt: gate.unlocked_at ? new Date(gate.unlocked_at) : null,
+          completedChats: UNLOCK_THRESHOLD,
+          unlockedAt: new Date(),
           createdAt: new Date(gate.created_at),
         } : null,
-        unlockedFeatures,
-        completedChats: chats,
-        isFullyUnlocked: fullyUnlocked,
-        canAccessPetSelection: unlockedFeatures.includes("pet_selection") || fullyUnlocked,
-        canAccessDashboard: unlockedFeatures.includes("dashboard") || fullyUnlocked,
-        canAccessCommunity: unlockedFeatures.includes("peer_community") || fullyUnlocked,
+        unlockedFeatures: allFeatures,
+        completedChats: UNLOCK_THRESHOLD,
+        isFullyUnlocked: true,
+        canAccessPetSelection: true,
+        canAccessDashboard: true,
+        canAccessCommunity: true,
       });
       
-    } catch (error) {
-      console.error("Error fetching feature gate:", error);
-    } finally {
-      set({ isLoading: false });
+    } catch {
+      // Silently handle - feature gates table may not exist yet
+      // Everything stays unlocked, so this is non-critical
     }
   },
 
@@ -261,8 +276,8 @@ export const useFeatureGateStore = create<FeatureGateState>((set, get) => ({
         });
         
         return true;
-      } catch (error) {
-        console.error("Error unlocking features:", error);
+      } catch {
+        // Silently handle - database may not be configured
       }
     }
     

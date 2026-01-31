@@ -1,9 +1,10 @@
 /**
  * Sahara AI Companion - Therapeutic Response System
- * 
- * This module implements the AI companion behavior following the exact
- * system prompt specifications for mental wellness support.
+ *
+ * Uses shared NLP (unified-ai) for analysis; response templates and pet animation live here.
  */
+
+import { analyzeMessage } from "@/lib/unified-ai";
 
 // ============================================================================
 // SYSTEM PROMPT - SAHARA AI COMPANION
@@ -217,100 +218,25 @@ const crisisIndicators = [
 // ============================================================================
 
 /**
- * Analyze user message for emotional content
+ * Analyze user message for emotional content.
+ * Uses shared NLP (unified-ai) so API and demo use the same analysis.
  * @param message - The user's message to analyze
- * @param conversationHistory - Optional array of previous messages for context
+ * @param _conversationHistory - Optional (kept for API compatibility; context can be added later)
  */
 export function analyzeUserMessage(
-  message: string, 
-  conversationHistory?: string[]
+  message: string,
+  _conversationHistory?: string[]
 ): EmotionalAnalysis {
-  const lowerMessage = message.toLowerCase();
-  
-  // Consider conversation history for context (if provided)
-  const contextMessages = conversationHistory?.slice(-5).join(' ').toLowerCase() || '';
-  
-  // Detect emotions
-  const emotions = {
-    sadness: 0,
-    anxiety: 0,
-    anger: 0,
-    happiness: 0,
-    confusion: 0,
-    exhaustion: 0,
-    loneliness: 0,
-    hope: 0,
-    guilt: 0,
-    fear: 0
-  };
-  
-  // Score each emotion based on keyword matches
-  for (const [emotion, patterns] of Object.entries(emotionPatterns)) {
-    for (const pattern of patterns) {
-      if (lowerMessage.includes(pattern)) {
-        emotions[emotion as keyof typeof emotions] += 1;
-      }
-    }
-  }
-  
-  // Normalize scores
-  const maxScore = Math.max(...Object.values(emotions), 1);
-  for (const emotion of Object.keys(emotions)) {
-    emotions[emotion as keyof typeof emotions] /= maxScore;
-  }
-  
-  // Detect themes
-  const themes: string[] = [];
-  for (const [theme, patterns] of Object.entries(themePatterns)) {
-    for (const pattern of patterns) {
-      if (lowerMessage.includes(pattern) && !themes.includes(theme)) {
-        themes.push(theme);
-        break;
-      }
-    }
-  }
-  
-  // Detect crisis
-  const isCrisis = crisisIndicators.some(indicator => 
-    lowerMessage.includes(indicator)
-  );
-  
-  // Calculate intensity
-  const totalEmotionScore = Object.values(emotions).reduce((a, b) => a + b, 0);
-  const intensity: "low" | "medium" | "high" = 
-    totalEmotionScore > 3 ? "high" :
-    totalEmotionScore > 1.5 ? "medium" : "low";
-  
-  // Find dominant emotion
-  let dominantEmotion = "neutral";
-  let maxEmotionScore = 0;
-  for (const [emotion, score] of Object.entries(emotions)) {
-    if (score > maxEmotionScore) {
-      maxEmotionScore = score;
-      dominantEmotion = emotion;
-    }
-  }
-  
-  // Calculate sentiment score (-1 to 1)
-  const positiveEmotions = emotions.happiness + emotions.hope;
-  const negativeEmotions = emotions.sadness + emotions.anxiety + emotions.anger + 
-                          emotions.fear + emotions.guilt + emotions.loneliness;
-  const sentimentScore = (positiveEmotions - negativeEmotions) / 
-                        Math.max(positiveEmotions + negativeEmotions, 1);
-  
-  // Determine if user needs support
-  const needsSupport = negativeEmotions > positiveEmotions || 
-                       intensity === "high" || 
-                       isCrisis;
-  
+  const result = analyzeMessage(message);
+  const e = result.emotionalAnalysis;
   return {
-    emotions,
-    themes,
-    intensity,
-    needsSupport,
-    isCrisis,
-    dominantEmotion,
-    sentimentScore: Math.max(-1, Math.min(1, sentimentScore))
+    emotions: e.emotions,
+    themes: e.themes,
+    intensity: e.intensity,
+    needsSupport: e.needsSupport,
+    isCrisis: e.isCrisis,
+    dominantEmotion: e.dominantEmotion,
+    sentimentScore: e.sentimentScore,
   };
 }
 

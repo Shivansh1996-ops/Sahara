@@ -4,7 +4,9 @@
  * Integrates with Supabase for persistent data storage
  */
 
-import { createClient } from "@/lib/supabase/client";
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+import { createClient, isDemoMode } from "@/lib/supabase/client";
 
 export interface LearningGroup {
   id: string;
@@ -370,6 +372,11 @@ export const demoMilestones: LearningMilestone[] = [
 export async function getLearningGroups(): Promise<LearningGroup[]> {
   const supabase = createClient();
   
+  // Check demo mode first
+  if (isDemoMode()) {
+    return demoLearningGroups;
+  }
+  
   try {
     const { data, error } = await supabase
       .from("learning_groups")
@@ -400,7 +407,10 @@ export async function getLearningGroups(): Promise<LearningGroup[]> {
       createdAt: new Date(group.created_at),
     }));
   } catch (error) {
-    console.error("Error fetching learning groups:", error);
+    // Only log if not demo mode
+    if (!isDemoMode()) {
+      console.error("Error fetching learning groups:", error);
+    }
     return demoLearningGroups;
   }
 }
@@ -410,6 +420,11 @@ export async function getLearningGroups(): Promise<LearningGroup[]> {
  */
 export async function getStudyCircles(groupId?: string): Promise<StudyCircle[]> {
   const supabase = createClient();
+  
+  // Check demo mode first
+  if (isDemoMode()) {
+    return demoStudyCircles;
+  }
   
   try {
     let query = supabase
@@ -452,7 +467,10 @@ export async function getStudyCircles(groupId?: string): Promise<StudyCircle[]> 
       status: circle.status,
     }));
   } catch (error) {
-    console.error("Error fetching study circles:", error);
+    // Only log if not demo mode
+    if (!isDemoMode()) {
+      console.error("Error fetching study circles:", error);
+    }
     return demoStudyCircles;
   }
 }
@@ -462,6 +480,11 @@ export async function getStudyCircles(groupId?: string): Promise<StudyCircle[]> 
  */
 export async function getSharedResources(groupId?: string): Promise<SharedResource[]> {
   const supabase = createClient();
+  
+  // Check demo mode first
+  if (isDemoMode()) {
+    return demoSharedResources;
+  }
   
   try {
     let query = supabase
@@ -501,7 +524,10 @@ export async function getSharedResources(groupId?: string): Promise<SharedResour
       tags: resource.resource_tags?.map((t: any) => t.tag) || [],
     }));
   } catch (error) {
-    console.error("Error fetching shared resources:", error);
+    // Only log if not demo mode
+    if (!isDemoMode()) {
+      console.error("Error fetching shared resources:", error);
+    }
     return demoSharedResources;
   }
 }
@@ -558,6 +584,11 @@ export async function getLearningChallenges(): Promise<LearningChallenge[]> {
 export async function getDiscussionThreads(groupId?: string): Promise<DiscussionThread[]> {
   const supabase = createClient();
   
+  // Check demo mode first
+  if (isDemoMode()) {
+    return demoDiscussionThreads;
+  }
+  
   try {
     let query = supabase
       .from("discussion_threads")
@@ -599,7 +630,10 @@ export async function getDiscussionThreads(groupId?: string): Promise<Discussion
       lastActivityAt: new Date(thread.last_activity_at),
     }));
   } catch (error) {
-    console.error("Error fetching discussion threads:", error);
+    // Only log if not demo mode
+    if (!isDemoMode()) {
+      console.error("Error fetching discussion threads:", error);
+    }
     return demoDiscussionThreads;
   }
 }

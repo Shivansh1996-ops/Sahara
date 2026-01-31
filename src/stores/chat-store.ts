@@ -1,10 +1,55 @@
 import { create } from "zustand";
 import { createClient, isDemoMode } from "@/lib/supabase/client";
 import { analyzeUserMessage, generateTherapeuticResponse, getSuggestedAnimation } from "@/lib/therapeutic-ai";
+import { playPetVoice, playPetSound, getVoiceForMood, type PetType } from "@/lib/pet-voice-system";
+import { usePetStore } from "@/stores/pet-store";
 import type { ChatMessage, ChatSession, PetAnimationState } from "@/types";
+
+// Always use the API for AI responses (to use Chirag)
+const USE_API_FOR_CHAT = true;
 
 function generateId(): string {
   return `demo-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+}
+
+// Helper function to play pet sounds on chat response
+async function playPetResponseSounds() {
+  try {
+    // Add small delay to ensure pet store is initialized
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    const petStore = usePetStore.getState();
+    const activePet = petStore.activePet;
+    
+    console.log(`🔊 Attempting to play pet sounds. Active pet:`, activePet);
+    
+    if (!activePet) {
+      console.log(`🔊 No active pet found, using default sounds`);
+      // Play default sounds even if no pet selected
+      await playPetVoice('buddy-greeting');
+      await playPetSound('buddy-bark');
+      return;
+    }
+    
+    const petType: PetType = activePet.personality?.toLowerCase().includes('cat') ? 'cat' : 'dog';
+    console.log(`🔊 Pet type: ${petType}, Personality: ${activePet.personality}`);
+    
+    // Play voice response
+    const voice = getVoiceForMood(petType, 'happy');
+    if (voice) {
+      console.log(`🔊 Playing voice: ${voice.id} from ${voice.audioUrl}`);
+      await playPetVoice(voice.id);
+    } else {
+      console.log(`🔊 No voice found for pet type: ${petType}`);
+    }
+    
+    // Play sound effect
+    const soundId = petType === 'dog' ? 'buddy-bark' : 'whiskers-meow';
+    console.log(`🔊 Playing sound: ${soundId}`);
+    await playPetSound(soundId);
+  } catch (error) {
+    console.error("❌ Error playing pet response sounds:", error);
+  }
 }
 
 interface ChatState {
@@ -198,7 +243,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     
     set({ isSending: true, petAnimation: "thinking" });
     
-    // Demo mode - handle locally with therapeutic AI responses
+    // Demo mode - use API for Chirag AI responses
     if (isDemoMode()) {
       const newUserMessage: ChatMessage = {
         id: generateId(),
@@ -212,45 +257,101 @@ export const useChatStore = create<ChatState>((set, get) => ({
       
       set({ messages: [...get().messages, newUserMessage] });
       
-      // Get conversation history for context
-      const conversationHistory = messages.map(m => m.content);
-      
-      // Analyze the user's message for emotional content
-      const analysis = analyzeUserMessage(content, conversationHistory);
-      
-      // Simulate AI thinking delay (longer for more thoughtful responses)
-      const thinkingTime = analysis.intensity === 'high' ? 2000 : 1500;
-      await new Promise(resolve => setTimeout(resolve, thinkingTime + Math.random() * 500));
-      
-      // Generate a therapeutic response based on emotional analysis
-      const aiContent = generateTherapeuticResponse(
-        content,
-        analysis,
-        messages.map(m => ({ role: m.role, content: m.content }))
-      );
-      
-      // Get appropriate pet animation based on the emotional analysis
-      const suggestedAnimation = getSuggestedAnimation(analysis) as PetAnimationState;
-      
-      const newAiMessage: ChatMessage = {
-        id: generateId(),
-        sessionId: session.id,
-        userId,
-        content: aiContent,
-        role: "assistant",
-        emotionalKeywords: analysis.themes.length > 0 ? analysis.themes : null,
-        createdAt: new Date(),
-      };
-      
-      // Increment demo message count (counts each exchange as 1)
-      const newCount = demoMessageCount + 1;
-      
-      set({
-        messages: [...get().messages, newAiMessage],
-        petAnimation: suggestedAnimation,
-        isSending: false,
-        demoMessageCount: newCount,
-      });
+      try {
+        // Call the API to use Chirag AI
+        const response = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messages: [...messages, newUserMessage].map((m) => ({
+              role: m.role,
+              content: m.content,
+            })),
+            userId,
+          }),
+        });
+        
+        let aiContent: string;
+        let suggestedAnimation: PetAnimationState = "happy";
+        let emotionalKeywords: string[] | null = null;
+        
+        if (response.ok) {
+          const aiResponse = await response.json();
+          aiContent = aiResponse.content;
+          suggestedAnimation = aiResponse.suggestedAnimation || "happy";
+          emotionalKeywords = aiResponse.emotionalKeywords || null;
+          
+          // Log which AI provider was used
+          console.log(`🤖 AI Provider: ${aiResponse.aiProvider || 'unknown'}`);
+        } else {
+          // Fallback to local therapeutic AI if API fails
+          console.log("API failed, using local therapeutic AI");
+          const conversationHistory = messages.map(m => m.content);
+          const analysis = analyzeUserMessage(content, conversationHistory);
+          aiContent = generateTherapeuticResponse(
+            content,
+            analysis,
+            messages.map(m => ({ role: m.role, content: m.content }))
+          );
+          suggestedAnimation = getSuggestedAnimation(analysis) as PetAnimationState;
+          emotionalKeywords = analysis.themes.length > 0 ? analysis.themes : null;
+        }
+        
+        const newAiMessage: ChatMessage = {
+          id: generateId(),
+          sessionId: session.id,
+          userId,
+          content: aiContent,
+          role: "assistant",
+          emotionalKeywords,
+          createdAt: new Date(),
+        };
+        
+        // Increment demo message count
+        const newCount = demoMessageCount + 1;
+        
+        set({
+          messages: [...get().messages, newAiMessage],
+          petAnimation: suggestedAnimation,
+          isSending: false,
+          demoMessageCount: newCount,
+        });
+        
+        // Play pet sounds on response
+        await playPetResponseSounds();
+        
+      } catch (error) {
+        console.error("Error calling chat API:", error);
+        
+        // Fallback to local therapeutic AI
+        const conversationHistory = messages.map(m => m.content);
+        const analysis = analyzeUserMessage(content, conversationHistory);
+        const aiContent = generateTherapeuticResponse(
+          content,
+          analysis,
+          messages.map(m => ({ role: m.role, content: m.content }))
+        );
+        const suggestedAnimation = getSuggestedAnimation(analysis) as PetAnimationState;
+        
+        const newAiMessage: ChatMessage = {
+          id: generateId(),
+          sessionId: session.id,
+          userId,
+          content: aiContent,
+          role: "assistant",
+          emotionalKeywords: analysis.themes.length > 0 ? analysis.themes : null,
+          createdAt: new Date(),
+        };
+        
+        set({
+          messages: [...get().messages, newAiMessage],
+          petAnimation: suggestedAnimation,
+          isSending: false,
+          demoMessageCount: demoMessageCount + 1,
+        });
+        
+        await playPetResponseSounds();
+      }
       
       // Reset animation after a delay
       setTimeout(() => {
@@ -338,6 +439,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
         messages: [...get().messages, newAiMessage],
         petAnimation: aiResponse.suggestedAnimation || "happy",
       });
+      
+      // Play pet sounds on response
+      await playPetResponseSounds();
       
       // Update message count
       await supabase

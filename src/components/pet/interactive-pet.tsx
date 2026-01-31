@@ -201,9 +201,12 @@ export function InteractivePet({ isOpen, onClose }: InteractivePetProps) {
     const savedStats = localStorage.getItem("sahara-pet-stats");
     if (savedStats) {
       const stats = JSON.parse(savedStats);
-      setInteractionCount(stats.interactions || 0);
-      setCompletedActivities(stats.activities || 0);
-      setTotalCalories(stats.calories || 0);
+      // Defer setting state to avoid synchronous setState inside effect
+      setTimeout(() => {
+        setInteractionCount(stats.interactions || 0);
+        setCompletedActivities(stats.activities || 0);
+        setTotalCalories(stats.calories || 0);
+      }, 0);
     }
   }, []);
 
@@ -229,8 +232,11 @@ export function InteractivePet({ isOpen, onClose }: InteractivePetProps) {
 
   useEffect(() => {
     if (isOpen) {
-      setCurrentMessage(getRandomMessage());
-      setCurrentActivity(getRandomActivity());
+      // Defer updates to avoid synchronous setState inside effect
+      setTimeout(() => {
+        setCurrentMessage(getRandomMessage());
+        setCurrentActivity(getRandomActivity());
+      }, 0);
     }
   }, [isOpen, getRandomMessage, getRandomActivity]);
 
@@ -286,7 +292,7 @@ export function InteractivePet({ isOpen, onClose }: InteractivePetProps) {
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.9, opacity: 0 }}
-          className="bg-white rounded-3xl max-w-md w-full overflow-hidden shadow-2xl max-h-[90vh] overflow-y-auto"
+          className="bg-white rounded-3xl max-w-md w-full overflow-hidden shadow-2xl shadow-sage-200/50 max-h-[90vh] overflow-y-auto border border-beige-100"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}

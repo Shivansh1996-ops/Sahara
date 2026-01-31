@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { createClient, isDemoMode } from "@/lib/supabase/client";
+import { localSignIn, localSignUp, localSignOut, getSession, type LocalUser } from "@/lib/local-auth";
 import type { User, UserProfile } from "@/types";
 
 interface AuthState {
@@ -8,16 +9,29 @@ interface AuthState {
   isLoading: boolean;
   isAuthenticated: boolean;
   isDemoMode: boolean;
+  isEmailVerified: boolean;
   
   // Actions
   initialize: () => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<void>;
-  signUpWithEmail: (email: string, password: string) => Promise<void>;
+  signUpWithEmail: (email: string, password: string, name?: string) => Promise<void>;
   signOut: () => Promise<void>;
   updateProfile: (data: Partial<UserProfile>) => Promise<void>;
   fetchProfile: () => Promise<void>;
   enableDemoMode: () => void;
+  verifyEmail: (token: string) => Promise<void>;
+  resendVerificationEmail: () => Promise<void>;
+  checkEmailVerification: () => Promise<boolean>;
+}
+
+// Helper to convert LocalUser to User
+function localUserToUser(localUser: LocalUser): User {
+  return {
+    id: localUser.id,
+    email: localUser.email,
+    createdAt: new Date(localUser.createdAt),
+  };
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -26,18 +40,59 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isLoading: true,
   isAuthenticated: false,
   isDemoMode: isDemoMode(),
+  isEmailVerified: true, // Local auth doesn't need email verification
 
   initialize: async () => {
-    // Check if we're in demo mode from store state (not env)
     const { isDemoMode: isDemo, isAuthenticated } = get();
     
-    // If already authenticated (e.g., demo mode), don't re-initialize
     if (isDemo && isAuthenticated) {
       set({ isLoading: false });
       return;
     }
     
-    // Check if we're in demo mode from environment
+    // Check for existing local session first
+    const localSession = getSession();
+    if (localSession) {
+      // Try to load saved profile from localStorage
+      let savedProfile: UserProfile | null = null;
+      if (typeof window !== 'undefined') {
+        const profileKey = `sahara-profile-${localSession.id}`;
+        const savedProfileJson = localStorage.getItem(profileKey);
+        if (savedProfileJson) {
+          try {
+            const parsed = JSON.parse(savedProfileJson);
+            savedProfile = {
+              ...parsed,
+              createdAt: new Date(parsed.createdAt),
+              updatedAt: new Date(parsed.updatedAt),
+            };
+          } catch (e) {
+            console.error('Error parsing saved profile:', e);
+          }
+        }
+      }
+      
+      set({
+        user: localUserToUser(localSession),
+        profile: savedProfile || {
+          id: localSession.id,
+          userId: localSession.id,
+          name: localSession.name,
+          sex: null,
+          age: null,
+          medicalHistoryEncrypted: null,
+          anonymousName: `User${localSession.id.slice(0, 4)}`,
+          createdAt: new Date(localSession.createdAt),
+          updatedAt: new Date(localSession.createdAt),
+        },
+        isAuthenticated: true,
+        isLoading: false,
+        isEmailVerified: true,
+      });
+      return;
+    }
+    
+    // If Supabase is in demo mode, just show landing page
     if (isDemoMode()) {
       set({ isLoading: false, isDemoMode: true });
       return;
@@ -68,29 +123,34 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({ isLoading: false });
     }
 
-    // Listen for auth changes
-    supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === "SIGNED_IN" && session?.user) {
-        set({
-          user: {
-            id: session.user.id,
-            email: session.user.email!,
-            createdAt: new Date(session.user.created_at),
-          },
-          isAuthenticated: true,
-        });
-        await get().fetchProfile();
-      } else if (event === "SIGNED_OUT") {
-        set({
-          user: null,
-          profile: null,
-          isAuthenticated: false,
-        });
-      }
-    });
+    if (!isDemoMode()) {
+      supabase.auth.onAuthStateChange(async (event, session) => {
+        if (event === "SIGNED_IN" && session?.user) {
+          set({
+            user: {
+              id: session.user.id,
+              email: session.user.email!,
+              createdAt: new Date(session.user.created_at),
+            },
+            isAuthenticated: true,
+          });
+          await get().fetchProfile();
+        } else if (event === "SIGNED_OUT") {
+          set({
+            user: null,
+            profile: null,
+            isAuthenticated: false,
+          });
+        }
+      });
+    }
   },
 
   signInWithGoogle: async () => {
+    if (isDemoMode()) {
+      throw new Error("Google sign-in not available in demo mode. Please use email sign-in.");
+    }
+    
     const supabase = createClient();
     
     const { error } = await supabase.auth.signInWithOAuth({
@@ -104,28 +164,68 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   signInWithEmail: async (email: string, password: string) => {
-    const supabase = createClient();
-    
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    
-    if (error) throw error;
+    // Always try local auth first (works without Supabase)
+    try {
+      const { user: localUser } = await localSignIn(email, password);
+      
+      set({
+        user: localUserToUser(localUser),
+        profile: {
+          id: localUser.id,
+          userId: localUser.id,
+          name: localUser.name,
+          sex: null,
+          age: null,
+          medicalHistoryEncrypted: null,
+          anonymousName: `User${localUser.id.slice(0, 4)}`,
+          createdAt: new Date(localUser.createdAt),
+          updatedAt: new Date(localUser.createdAt),
+        },
+        isAuthenticated: true,
+        isLoading: false,
+        isEmailVerified: true,
+      });
+      return;
+    } catch (localError) {
+      // If local auth fails with "no account", try Supabase if configured
+      if (!isDemoMode() && (localError as Error).message.includes("No account found")) {
+        const supabase = createClient();
+        const { error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (error) throw error;
+        return;
+      }
+      throw localError;
+    }
   },
 
-  signUpWithEmail: async (email: string, password: string) => {
-    const supabase = createClient();
-    
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
-      },
-    });
-    
-    if (error) throw error;
+  signUpWithEmail: async (email: string, password: string, name?: string) => {
+    // Use local auth for sign up (works without Supabase)
+    try {
+      const { user: localUser } = await localSignUp(email, password, name);
+      
+      set({
+        user: localUserToUser(localUser),
+        profile: {
+          id: localUser.id,
+          userId: localUser.id,
+          name: localUser.name,
+          sex: null,
+          age: null,
+          medicalHistoryEncrypted: null,
+          anonymousName: `User${localUser.id.slice(0, 4)}`,
+          createdAt: new Date(localUser.createdAt),
+          updatedAt: new Date(localUser.createdAt),
+        },
+        isAuthenticated: true,
+        isLoading: false,
+        isEmailVerified: true,
+      });
+    } catch (error) {
+      throw error;
+    }
   },
 
   signOut: async () => {
@@ -139,7 +239,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       localStorage.removeItem("sahara-selected-pet");
       localStorage.removeItem("sahara-journal-entries");
       localStorage.removeItem("sahara-first-visit");
+      localStorage.removeItem("sahara-user-state");
+      localStorage.removeItem("sahara-habits-today");
+      localStorage.removeItem("sahara-mood-today");
+      localStorage.removeItem("sahara-streak");
+      localStorage.removeItem("sahara-wellness-data");
+      localStorage.removeItem("sahara-new-account");
+      localStorage.removeItem("sahara-profile-complete");
+      localStorage.removeItem("sahara-user-gender");
+      localStorage.removeItem("sahara-user-id");
     }
+    
+    // Always sign out from local auth
+    localSignOut();
     
     // If in demo mode, just reset the state
     if (isDemo) {
@@ -153,11 +265,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       return;
     }
     
-    const supabase = createClient();
-    
-    const { error } = await supabase.auth.signOut();
-    
-    if (error) throw error;
+    // Also sign out from Supabase if configured
+    if (!isDemoMode()) {
+      const supabase = createClient();
+      await supabase.auth.signOut();
+    }
     
     set({
       user: null,
@@ -168,6 +280,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   fetchProfile: async () => {
+    if (isDemoMode()) return;
+    
     const supabase = createClient();
     const { user } = get();
     
@@ -202,47 +316,84 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   updateProfile: async (data: Partial<UserProfile>) => {
-    if (isDemoMode()) return;
+    const { user, profile, isDemoMode: isDemo } = get();
     
-    const supabase = createClient();
-    const { user, profile } = get();
+    // Check if user is using local auth (has a local session)
+    const localSession = getSession();
+    const isLocalAuth = !!localSession;
     
-    if (!user) throw new Error("Not authenticated");
-    
-    const updateData: Record<string, unknown> = {};
-    if (data.name !== undefined) updateData.name = data.name;
-    if (data.sex !== undefined) updateData.sex = data.sex;
-    if (data.age !== undefined) updateData.age = data.age;
-    if (data.medicalHistoryEncrypted !== undefined) {
-      updateData.medical_history_encrypted = data.medicalHistoryEncrypted;
-    }
-    updateData.updated_at = new Date().toISOString();
-    
-    if (profile) {
-      const { error } = await supabase
-        .from("user_profiles")
-        .update(updateData)
-        .eq("id", profile.id);
+    // For local/demo users, update in memory and localStorage
+    if (isDemo || isLocalAuth || !user) {
+      const userId = user?.id || localSession?.id || 'demo';
       
-      if (error) throw error;
-    } else {
-      const { generateAnonymousName } = await import("@/lib/utils");
-      const { error } = await supabase
-        .from("user_profiles")
-        .insert({
-          user_id: user.id,
-          anonymous_name: generateAnonymousName(),
-          ...updateData,
-        });
+      // Create base profile if it doesn't exist
+      const baseProfile: UserProfile = profile || {
+        id: `local-${userId}`,
+        userId: userId,
+        anonymousName: data.name || `User-${userId.slice(0, 6)}`,
+        name: null,
+        sex: null,
+        age: null,
+        medicalHistoryEncrypted: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
       
-      if (error) throw error;
+      const updatedProfile: UserProfile = {
+        ...baseProfile,
+        ...data,
+        updatedAt: new Date(),
+      };
+      
+      set({ profile: updatedProfile });
+      
+      // Also persist to localStorage for local auth users
+      if ((isLocalAuth || isDemo) && typeof window !== 'undefined') {
+        const profileKey = `sahara-profile-${userId}`;
+        localStorage.setItem(profileKey, JSON.stringify(updatedProfile));
+      }
+      
+      return;
     }
     
-    await get().fetchProfile();
+    // For Supabase users
+    if (!isDemoMode()) {
+      const supabase = createClient();
+      
+      const updateData: Record<string, unknown> = {};
+      if (data.name !== undefined) updateData.name = data.name;
+      if (data.sex !== undefined) updateData.sex = data.sex;
+      if (data.age !== undefined) updateData.age = data.age;
+      if (data.medicalHistoryEncrypted !== undefined) {
+        updateData.medical_history_encrypted = data.medicalHistoryEncrypted;
+      }
+      updateData.updated_at = new Date().toISOString();
+      
+      if (profile) {
+        const { error } = await supabase
+          .from("user_profiles")
+          .update(updateData)
+          .eq("id", profile.id);
+        
+        if (error) throw error;
+      } else {
+        const { generateAnonymousName } = await import("@/lib/utils");
+        const { error } = await supabase
+          .from("user_profiles")
+          .insert({
+            user_id: user.id,
+            anonymous_name: generateAnonymousName(),
+            ...updateData,
+          });
+        
+        if (error) throw error;
+      }
+      
+      await get().fetchProfile();
+    }
   },
 
   enableDemoMode: () => {
-    // Clear any existing localStorage data for fresh start
     if (typeof window !== 'undefined') {
       localStorage.removeItem("sahara-daily-chats");
       localStorage.removeItem("sahara-unlock-date");
@@ -273,5 +424,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       isDemoMode: true,
       isLoading: false,
     });
+  },
+
+  verifyEmail: async () => {
+    // Not needed for local auth
+    set({ isEmailVerified: true });
+  },
+
+  resendVerificationEmail: async () => {
+    // Not needed for local auth
+  },
+
+  checkEmailVerification: async () => {
+    return true; // Local auth doesn't need verification
   },
 }));

@@ -6,7 +6,7 @@ import Image from "next/image";
 import { usePetStore } from "@/stores/pet-store";
 import { useChatStore } from "@/stores/chat-store";
 import { cn } from "@/lib/utils";
-import { Heart, Sparkles, Star, Zap, Moon, Sun, Cloud } from "lucide-react";
+import { Heart, Sparkles, Star, Zap, Cloud } from "lucide-react";
 
 interface PetDisplayProps {
   size?: "sm" | "md" | "lg" | "xl" | "2xl";
@@ -120,6 +120,22 @@ const moodColors: Record<PetMood, string> = {
 
 // Floating particle component
 function FloatingParticle({ delay, icon: Icon, color }: { delay: number; icon: React.ElementType; color: string }) {
+  const [rand, setRand] = useState<{ x: number; y: number; repeatDelay: number; left: string } | null>(null);
+
+  useEffect(() => {
+    // Generate random values on mount to avoid impure calls during render
+    setTimeout(() => {
+      setRand({
+        x: Math.random() * 60 - 30,
+        y: -80 - Math.random() * 40,
+        repeatDelay: Math.random() * 2 + 1,
+        left: `${30 + Math.random() * 40}%`,
+      });
+    }, 0);
+  }, []);
+
+  if (!rand) return null;
+
   return (
     <motion.div
       className="absolute pointer-events-none"
@@ -127,16 +143,16 @@ function FloatingParticle({ delay, icon: Icon, color }: { delay: number; icon: R
       animate={{
         opacity: [0, 1, 1, 0],
         scale: [0.5, 1, 1, 0.5],
-        x: [0, Math.random() * 60 - 30],
-        y: [0, -80 - Math.random() * 40],
+        x: [0, rand.x],
+        y: [0, rand.y],
       }}
       transition={{
         duration: 3,
         delay,
         repeat: Infinity,
-        repeatDelay: Math.random() * 2 + 1,
+        repeatDelay: rand.repeatDelay,
       }}
-      style={{ left: `${30 + Math.random() * 40}%`, bottom: "60%" }}
+      style={{ left: rand.left, bottom: "60%" }}
     >
       <Icon className={cn("w-4 h-4", color)} />
     </motion.div>
@@ -162,13 +178,16 @@ export function PetDisplay({
 
   // Update pet mood based on interactions
   useEffect(() => {
-    if (interactionCount > 5) {
-      setPetMood("loving");
-    } else if (interactionCount > 3) {
-      setPetMood("excited");
-    } else if (interactionCount > 1) {
-      setPetMood("happy");
-    }
+    // Defer mood updates to avoid synchronous setState inside effect
+    setTimeout(() => {
+      if (interactionCount > 5) {
+        setPetMood("loving");
+      } else if (interactionCount > 3) {
+        setPetMood("excited");
+      } else if (interactionCount > 1) {
+        setPetMood("happy");
+      }
+    }, 0);
   }, [interactionCount]);
 
   // Random mood changes
@@ -185,13 +204,14 @@ export function PetDisplay({
   // Glow effect on animation
   useEffect(() => {
     if (petAnimation === "happy" || petAnimation === "glow") {
-      setIsGlowing(true);
+      // Defer to avoid synchronous state update in effect
+      setTimeout(() => setIsGlowing(true), 0);
       const timer = setTimeout(() => setIsGlowing(false), 2000);
       return () => clearTimeout(timer);
     }
   }, [petAnimation]);
 
-  const handlePetClick = useCallback(() => {
+  const handlePetClick = useCallback(async () => {
     if (!interactive || !activePet) return;
     
     const personality = activePet.personality?.toLowerCase() || "calm";
@@ -205,11 +225,31 @@ export function PetDisplay({
     const newHearts = Array.from({ length: 8 }, () => Math.random());
     setHearts(newHearts);
     
+    // Play pet sound immediately on click
+    const petName = activePet.name?.toLowerCase() || '';
+    const isCat = petName.includes('whiskers') || personality === 'playful';
+    
+    // Play sound based on pet type
+    try {
+      const soundUrl = isCat 
+        ? ['/audio/pets/whiskers/meow.mp3', '/audio/pets/whiskers/purr.mp3', '/audio/pets/whiskers/happy.mp3'][interactionCount % 3]
+        : ['/audio/pets/buddy/bark.mp3', '/audio/pets/buddy/happy.mp3', '/audio/pets/buddy/greeting.mp3'][interactionCount % 3];
+      
+      const audio = new Audio(soundUrl);
+      audio.volume = 0.8;
+      audio.preload = 'auto';
+      audio.play().then(() => {
+        console.log('🔊 Pet sound played:', soundUrl);
+      }).catch(e => console.warn('Audio blocked:', e.message));
+    } catch (e) {
+      console.warn('Audio error:', e);
+    }
+    
     setTimeout(() => {
       setShowInteraction(false);
       setHearts([]);
     }, 3500);
-  }, [interactive, activePet]);
+  }, [interactive, activePet, interactionCount]);
 
   // Early return AFTER all hooks
   if (!activePet) {
@@ -283,8 +323,8 @@ export function PetDisplay({
             key={i}
             className="absolute pointer-events-none z-20"
             style={{ left: `${20 + offset * 60}%` }}
-            initial={{ opacity: 1, y: 0, scale: 0.5, rotate: -15 + Math.random() * 30 }}
-            animate={{ opacity: 0, y: -120, scale: 1.2, rotate: -15 + Math.random() * 30 }}
+            initial={{ opacity: 1, y: 0, scale: 0.5, rotate: -15 + offset * 30 }}
+            animate={{ opacity: 0, y: -120, scale: 1.2, rotate: -15 + offset * 30 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 2, delay: i * 0.1, ease: "easeOut" }}
           >

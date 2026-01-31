@@ -16,12 +16,12 @@ import { cn } from "@/lib/utils";
 
 // Educational content categories
 const categories = [
-  { id: "anxiety", name: "Anxiety", icon: "💭", color: "bg-blue-100 text-blue-600" },
-  { id: "stress", name: "Stress", icon: "🌊", color: "bg-teal-100 text-teal-600" },
-  { id: "depression", name: "Low Mood", icon: "🌧️", color: "bg-indigo-100 text-indigo-600" },
-  { id: "sleep", name: "Sleep", icon: "🌙", color: "bg-purple-100 text-purple-600" },
-  { id: "mindfulness", name: "Mindfulness", icon: "🧘", color: "bg-sage-100 text-sage-600" },
-  { id: "relationships", name: "Relationships", icon: "💚", color: "bg-pink-100 text-pink-600" },
+  { id: "anxiety", name: "Anxiety", icon: "💭", color: "bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400" },
+  { id: "stress", name: "Stress", icon: "🌊", color: "bg-teal-100 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400" },
+  { id: "depression", name: "Low Mood", icon: "🌧️", color: "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400" },
+  { id: "sleep", name: "Sleep", icon: "🌙", color: "bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400" },
+  { id: "mindfulness", name: "Mindfulness", icon: "🧘", color: "bg-[var(--primary)]/10 text-[var(--primary)]" },
+  { id: "relationships", name: "Relationships", icon: "💚", color: "bg-pink-100 dark:bg-pink-900/30 text-pink-600 dark:text-pink-400" },
 ];
 
 interface Article {
@@ -224,9 +224,14 @@ export default function LearnPage() {
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
-      setCompletedArticles(JSON.parse(stored));
+      // Defer state update to avoid synchronous setState inside effect
+      setTimeout(() => {
+        setCompletedArticles(JSON.parse(stored));
+        setIsLoading(false);
+      }, 0);
+    } else {
+      setTimeout(() => setIsLoading(false), 0);
     }
-    setIsLoading(false);
   }, []);
 
   useEffect(() => {
@@ -250,8 +255,8 @@ export default function LearnPage() {
       <div className="flex items-center justify-center min-h-screen p-4">
         <Card className="max-w-md text-center">
           <CardContent className="pt-6">
-            <BookOpen className="w-12 h-12 text-sage-300 mx-auto mb-3" />
-            <p className="text-sage-600">Complete 10 chat sessions to unlock educational content.</p>
+            <BookOpen className="w-12 h-12 text-[var(--text-light)] mx-auto mb-3" />
+            <p className="text-[var(--text-muted)]">Complete 10 chat sessions to unlock educational content.</p>
           </CardContent>
         </Card>
       </div>
@@ -276,41 +281,47 @@ export default function LearnPage() {
 
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-sage-50/50 via-beige-50 to-soft-blue-50/30 pb-24">
-      {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="relative overflow-hidden bg-gradient-to-br from-sage-600 via-sage-500 to-emerald-500 px-4 py-6 text-white"
-      >
-        <div className="relative z-10">
-          <div className="flex items-center gap-2 mb-2">
-            <BookOpen className="w-5 h-5 opacity-80" />
-            <span className="text-sm font-medium opacity-80">Learn</span>
-          </div>
-          <h1 className="text-xl font-bold mb-1">Educational Content</h1>
-          <p className="text-white/80 text-sm">Expand your mental wellness knowledge</p>
-
-          {/* Progress */}
-          <div className="flex items-center gap-3 mt-4">
-            <div className="flex items-center gap-1.5 bg-white/10 rounded-full px-3 py-1">
-              <CheckCircle className="w-4 h-4" />
-              <span className="text-sm">{completedArticles.length}/{articles.length} completed</span>
+    <div className="min-h-screen pb-24 bg-gradient-to-b from-[var(--bg)] to-[var(--card)]">
+      <div className="max-w-2xl mx-auto px-4">
+        {/* Header */}
+        <motion.div 
+          initial={{ opacity: 0, y: -10 }} 
+          animate={{ opacity: 1, y: 0 }} 
+          className="pt-6 pb-5"
+        >
+          <div className="flex items-center gap-4 mb-4">
+            <motion.div 
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ type: "spring", bounce: 0.5 }}
+              className="w-14 h-14 rounded-2xl flex items-center justify-center bg-gradient-to-br from-[var(--primary)] to-[var(--primary-light)] shadow-lg"
+            >
+              <BookOpen className="w-7 h-7 text-white" />
+            </motion.div>
+            <div>
+              <h1 className="text-2xl font-bold text-[var(--text)]">Learn</h1>
+              <p className="text-sm text-[var(--text-muted)]">Mental wellness knowledge</p>
             </div>
           </div>
-        </div>
-      </motion.div>
 
-      <div className="p-4 space-y-4">
+          {/* Progress */}
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--primary)]/10 text-[var(--primary)] rounded-lg text-sm font-medium">
+              <CheckCircle className="w-4 h-4" />
+              <span>{completedArticles.length}/{articles.length} completed</span>
+            </div>
+          </div>
+        </motion.div>
+
         {/* Categories */}
-        <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4">
+        <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 mb-5">
           <button
             onClick={() => setSelectedCategory(null)}
             className={cn(
               "px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all",
               !selectedCategory
-                ? "bg-sage-600 text-white"
-                : "bg-beige-100 text-sage-600 hover:bg-beige-200"
+                ? "bg-[var(--primary)] text-white"
+                : "bg-[var(--bg-alt)] text-[var(--text-muted)] hover:bg-[var(--border)]"
             )}
           >
             All Topics
@@ -322,8 +333,8 @@ export default function LearnPage() {
               className={cn(
                 "px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all flex items-center gap-1.5",
                 selectedCategory === cat.id
-                  ? "bg-sage-600 text-white"
-                  : "bg-beige-100 text-sage-600 hover:bg-beige-200"
+                  ? "bg-[var(--primary)] text-white"
+                  : "bg-[var(--bg-alt)] text-[var(--text-muted)] hover:bg-[var(--border)]"
               )}
             >
               <span>{cat.icon}</span>
@@ -338,7 +349,7 @@ export default function LearnPage() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
           >
-            <Card className="bg-gradient-to-br from-sage-500 to-emerald-500 text-white overflow-hidden">
+            <Card className="bg-gradient-to-br from-[var(--primary)] to-emerald-500 text-white overflow-hidden border-0">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <Sparkles className="w-4 h-4" />
@@ -362,7 +373,7 @@ export default function LearnPage() {
 
         {/* Articles Grid */}
         <div className="space-y-3">
-          <h3 className="font-semibold text-sage-800">
+          <h3 className="font-semibold text-[var(--text)]">
             {selectedCategory
               ? categories.find(c => c.id === selectedCategory)?.name
               : "All Articles"}
@@ -381,7 +392,7 @@ export default function LearnPage() {
                 <Card
                   className={cn(
                     "cursor-pointer hover:shadow-md transition-all",
-                    isCompleted && "bg-sage-50/50"
+                    isCompleted && "bg-[var(--primary)]/5"
                   )}
                   onClick={() => setSelectedArticle(article)}
                 >
@@ -392,14 +403,14 @@ export default function LearnPage() {
                       </div>
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
-                          <h4 className="font-medium text-sage-800">{article.title}</h4>
+                          <h4 className="font-medium text-[var(--text)]">{article.title}</h4>
                           {isCompleted && (
-                            <CheckCircle className="w-4 h-4 text-sage-500" />
+                            <CheckCircle className="w-4 h-4 text-[var(--primary)]" />
                           )}
                         </div>
-                        <p className="text-sm text-sage-500 mt-0.5">{article.description}</p>
+                        <p className="text-sm text-[var(--text-muted)] mt-0.5">{article.description}</p>
                         <div className="flex items-center gap-3 mt-2">
-                          <span className="text-xs text-sage-400 flex items-center gap-1">
+                          <span className="text-xs text-[var(--text-light)] flex items-center gap-1">
                             <Clock className="w-3 h-3" />
                             {article.readTime} min read
                           </span>
@@ -408,7 +419,7 @@ export default function LearnPage() {
                           </span>
                         </div>
                       </div>
-                      <ChevronRight className="w-5 h-5 text-sage-400" />
+                      <ChevronRight className="w-5 h-5 text-[var(--text-light)]" />
                     </div>
                   </CardContent>
                 </Card>
@@ -432,19 +443,19 @@ function ArticleView({ article, isCompleted, onComplete, onBack }: ArticleViewPr
   const category = categories.find(c => c.id === article.category);
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-sage-50/50 via-beige-50 to-soft-blue-50/30 pb-24">
+    <div className="min-h-screen pb-24">
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-md border-b border-beige-200">
+      <div className="sticky top-0 z-10 bg-[var(--card)]/95 backdrop-blur-md border-b border-[var(--border)]">
         <div className="flex items-center justify-between p-4">
-          <button onClick={onBack} className="p-2 -ml-2 hover:bg-beige-100 rounded-lg">
-            <ArrowLeft className="w-5 h-5 text-sage-600" />
+          <button onClick={onBack} className="p-2 -ml-2 hover:bg-[var(--bg-alt)] rounded-lg">
+            <ArrowLeft className="w-5 h-5 text-[var(--text-muted)]" />
           </button>
           <div className="flex gap-2">
-            <button className="p-2 hover:bg-beige-100 rounded-lg">
-              <BookmarkPlus className="w-5 h-5 text-sage-400" />
+            <button className="p-2 hover:bg-[var(--bg-alt)] rounded-lg">
+              <BookmarkPlus className="w-5 h-5 text-[var(--text-light)]" />
             </button>
-            <button className="p-2 hover:bg-beige-100 rounded-lg">
-              <Share2 className="w-5 h-5 text-sage-400" />
+            <button className="p-2 hover:bg-[var(--bg-alt)] rounded-lg">
+              <Share2 className="w-5 h-5 text-[var(--text-light)]" />
             </button>
           </div>
         </div>
@@ -457,15 +468,15 @@ function ArticleView({ article, isCompleted, onComplete, onBack }: ArticleViewPr
             <span>{category?.icon}</span>
             {category?.name}
           </div>
-          <h1 className="text-2xl font-bold text-sage-800 mb-2">{article.title}</h1>
-          <p className="text-sage-600">{article.description}</p>
-          <div className="flex items-center gap-3 mt-3 text-sm text-sage-500">
+          <h1 className="text-2xl font-bold text-[var(--text)] mb-2">{article.title}</h1>
+          <p className="text-[var(--text-muted)]">{article.description}</p>
+          <div className="flex items-center gap-3 mt-3 text-sm text-[var(--text-light)]">
             <span className="flex items-center gap-1">
               <Clock className="w-4 h-4" />
               {article.readTime} min read
             </span>
             {isCompleted && (
-              <span className="flex items-center gap-1 text-sage-600">
+              <span className="flex items-center gap-1 text-[var(--primary)]">
                 <CheckCircle className="w-4 h-4" />
                 Completed
               </span>
@@ -481,7 +492,7 @@ function ArticleView({ article, isCompleted, onComplete, onBack }: ArticleViewPr
           className="space-y-4"
         >
           {article.content.map((paragraph, index) => (
-            <p key={index} className="text-sage-700 leading-relaxed">
+            <p key={index} className="text-[var(--text)] leading-relaxed">
               {paragraph}
             </p>
           ))}
@@ -494,21 +505,21 @@ function ArticleView({ article, isCompleted, onComplete, onBack }: ArticleViewPr
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
           >
-            <Card className="bg-sage-50 border-sage-200">
+            <Card className="bg-[var(--primary)]/5 border-[var(--primary)]/20">
               <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Play className="w-5 h-5 text-sage-600" />
+                <CardTitle className="text-lg flex items-center gap-2 text-[var(--text)]">
+                  <Play className="w-5 h-5 text-[var(--primary)]" />
                   Try This Exercise
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 {article.exercises.map((exercise, index) => (
                   <div key={index}>
-                    <h4 className="font-medium text-sage-800 mb-2">{exercise.title}</h4>
+                    <h4 className="font-medium text-[var(--text)] mb-2">{exercise.title}</h4>
                     <ol className="space-y-2">
                       {exercise.steps.map((step, stepIndex) => (
-                        <li key={stepIndex} className="flex items-start gap-2 text-sage-700">
-                          <span className="w-6 h-6 bg-sage-200 rounded-full flex items-center justify-center text-sm font-medium text-sage-700 flex-shrink-0">
+                        <li key={stepIndex} className="flex items-start gap-2 text-[var(--text)]">
+                          <span className="w-6 h-6 bg-[var(--primary)]/20 rounded-full flex items-center justify-center text-sm font-medium text-[var(--primary)] flex-shrink-0">
                             {stepIndex + 1}
                           </span>
                           {step}
@@ -531,7 +542,7 @@ function ArticleView({ article, isCompleted, onComplete, onBack }: ArticleViewPr
           >
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
+                <CardTitle className="text-lg flex items-center gap-2 text-[var(--text)]">
                   <Sparkles className="w-5 h-5 text-amber-500" />
                   Quick Tips
                 </CardTitle>
@@ -539,8 +550,8 @@ function ArticleView({ article, isCompleted, onComplete, onBack }: ArticleViewPr
               <CardContent>
                 <ul className="space-y-2">
                   {article.tips.map((tip, index) => (
-                    <li key={index} className="flex items-start gap-2 text-sage-700">
-                      <span className="text-sage-400">•</span>
+                    <li key={index} className="flex items-start gap-2 text-[var(--text)]">
+                      <span className="text-[var(--text-light)]">•</span>
                       {tip}
                     </li>
                   ))}

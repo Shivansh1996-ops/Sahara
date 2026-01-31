@@ -40,7 +40,8 @@ export default function ToolsPage() {
   useEffect(() => {
     const saved = localStorage.getItem("sahara-cbt-completed");
     if (saved) {
-      setCompletedExercises(JSON.parse(saved));
+      // Defer to avoid synchronous setState inside effect
+      setTimeout(() => setCompletedExercises(JSON.parse(saved)), 0);
     }
   }, []);
 
@@ -115,8 +116,8 @@ export default function ToolsPage() {
       <div className="flex items-center justify-center min-h-screen p-4">
         <Card className="max-w-md text-center">
           <CardContent className="pt-6">
-            <Brain className="w-12 h-12 text-sage-300 mx-auto mb-3" />
-            <p className="text-sage-600">
+            <Brain className="w-12 h-12 text-[var(--text-light)] mx-auto mb-3" />
+            <p className="text-[var(--text-muted)]">
               Complete 10 chat sessions to unlock CBT tools.
             </p>
           </CardContent>
@@ -131,20 +132,20 @@ export default function ToolsPage() {
     const progress = ((exerciseProgress.currentStep + 1) / selectedExercise.steps.length) * 100;
 
     return (
-      <div className="min-h-screen bg-gradient-to-b from-sage-50 to-beige-50 p-4 pb-24">
+      <div className="min-h-screen p-4 pb-24">
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
-          <button onClick={closeExercise} className="p-2 hover:bg-sage-100 rounded-full">
-            <X className="w-5 h-5 text-sage-600" />
+          <button onClick={closeExercise} className="p-2 hover:bg-[var(--bg-alt)] rounded-full">
+            <X className="w-5 h-5 text-[var(--text-muted)]" />
           </button>
-          <h1 className="font-semibold text-sage-800">{selectedExercise.title}</h1>
+          <h1 className="font-semibold text-[var(--text)]">{selectedExercise.title}</h1>
           <div className="w-9" />
         </div>
 
         {/* Progress bar */}
-        <div className="h-2 bg-sage-200 rounded-full mb-6 overflow-hidden">
+        <div className="h-2 bg-[var(--bg-alt)] rounded-full mb-6 overflow-hidden">
           <motion.div
-            className="h-full bg-sage-500 rounded-full"
+            className="h-full bg-[var(--primary)] rounded-full"
             initial={{ width: 0 }}
             animate={{ width: `${progress}%` }}
           />
@@ -161,12 +162,12 @@ export default function ToolsPage() {
           >
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg text-sage-800">
+                <CardTitle className="text-lg text-[var(--text)]">
                   Step {exerciseProgress.currentStep + 1}: {currentStep.title}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <p className="text-sage-600">{currentStep.instruction}</p>
+                <p className="text-[var(--text-muted)]">{currentStep.instruction}</p>
 
                 {/* Input based on type */}
                 {currentStep.inputType === 'text' && (
@@ -180,7 +181,7 @@ export default function ToolsPage() {
 
                 {currentStep.inputType === 'scale' && (
                   <div className="space-y-2">
-                    <div className="flex justify-between text-sm text-sage-500">
+                    <div className="flex justify-between text-sm text-[var(--text-light)]">
                       <span>0</span>
                       <span>50</span>
                       <span>100</span>
@@ -191,9 +192,9 @@ export default function ToolsPage() {
                       max="100"
                       value={(exerciseProgress.responses[currentStep.id] as number) || 50}
                       onChange={(e) => handleStepResponse(currentStep.id, parseInt(e.target.value))}
-                      className="w-full accent-sage-500"
+                      className="w-full accent-[var(--primary)]"
                     />
-                    <p className="text-center text-2xl font-bold text-sage-700">
+                    <p className="text-center text-2xl font-bold text-[var(--text)]">
                       {(exerciseProgress.responses[currentStep.id] as number) || 50}
                     </p>
                   </div>
@@ -218,18 +219,18 @@ export default function ToolsPage() {
                           className={cn(
                             "p-3 rounded-lg text-left transition-all border",
                             selected
-                              ? "bg-sage-100 border-sage-400"
-                              : "bg-white border-beige-200 hover:border-sage-300"
+                              ? "bg-[var(--primary)]/10 border-[var(--primary)]"
+                              : "bg-[var(--card)] border-[var(--border)] hover:border-[var(--primary)]/50"
                           )}
                         >
                           <div className="flex items-center justify-between">
-                            <span className="font-medium text-sage-800">{distortion?.name || option}</span>
+                            <span className="font-medium text-[var(--text)]">{distortion?.name || option}</span>
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setShowDistortionInfo(option as CognitiveDistortion);
                               }}
-                              className="text-sage-400 hover:text-sage-600"
+                              className="text-[var(--text-light)] hover:text-[var(--primary)]"
                             >
                               <BookOpen className="w-4 h-4" />
                             </button>
@@ -241,8 +242,8 @@ export default function ToolsPage() {
                 )}
 
                 {currentStep.inputType === 'none' && (
-                  <div className="p-4 bg-sage-50 rounded-lg text-center">
-                    <p className="text-sage-600">Take a moment to follow this instruction.</p>
+                  <div className="p-4 bg-[var(--bg-alt)] rounded-lg text-center">
+                    <p className="text-[var(--text-muted)]">Take a moment to follow this instruction.</p>
                   </div>
                 )}
               </CardContent>
@@ -252,15 +253,15 @@ export default function ToolsPage() {
             {selectedExercise.id === 'thought_record' && 
              exerciseProgress.currentStep === 3 && 
              exerciseProgress.responses[2] && (
-              <Card className="bg-amber-50 border-amber-200">
+              <Card className="bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900">
                 <CardContent className="p-4">
-                  <p className="text-sm text-amber-700 mb-2">
+                  <p className="text-sm text-amber-700 dark:text-amber-400 mb-2">
                     <Sparkles className="w-4 h-4 inline mr-1" />
                     Based on your thought, these patterns might be present:
                   </p>
                   <div className="flex flex-wrap gap-2">
                     {identifyDistortions(exerciseProgress.responses[2] as string).map(d => (
-                      <span key={d} className="px-2 py-1 bg-amber-100 text-amber-800 rounded-full text-xs">
+                      <span key={d} className="px-2 py-1 bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-300 rounded-full text-xs">
                         {cognitiveDistortions[d].name}
                       </span>
                     ))}
@@ -272,7 +273,7 @@ export default function ToolsPage() {
         </AnimatePresence>
 
         {/* Navigation */}
-        <div className="fixed bottom-20 left-0 right-0 p-4 bg-white border-t border-beige-200">
+        <div className="fixed bottom-20 left-0 right-0 p-4 bg-[var(--card)] border-t border-[var(--border)]">
           <div className="flex gap-3 max-w-lg mx-auto">
             {exerciseProgress.currentStep > 0 && (
               <Button variant="outline" onClick={prevStep} className="flex-1">
@@ -304,14 +305,14 @@ export default function ToolsPage() {
         >
           {showDistortionInfo && (
             <div className="space-y-4">
-              <p className="text-sage-600">{cognitiveDistortions[showDistortionInfo].description}</p>
-              <div className="p-3 bg-beige-50 rounded-lg">
-                <p className="text-sm text-sage-500 mb-1">Example:</p>
-                <p className="text-sage-700 italic">"{cognitiveDistortions[showDistortionInfo].example}"</p>
+              <p className="text-[var(--text-muted)]">{cognitiveDistortions[showDistortionInfo].description}</p>
+              <div className="p-3 bg-[var(--bg-alt)] rounded-lg">
+                <p className="text-sm text-[var(--text-light)] mb-1">Example:</p>
+                <p className="text-[var(--text)] italic">&quot;{cognitiveDistortions[showDistortionInfo].example}&quot;</p>
               </div>
-              <div className="p-3 bg-sage-50 rounded-lg">
-                <p className="text-sm text-sage-500 mb-1">Challenge it:</p>
-                <p className="text-sage-700">{cognitiveDistortions[showDistortionInfo].challenge}</p>
+              <div className="p-3 bg-[var(--primary)]/10 rounded-lg">
+                <p className="text-sm text-[var(--text-light)] mb-1">Challenge it:</p>
+                <p className="text-[var(--text)]">{cognitiveDistortions[showDistortionInfo].challenge}</p>
               </div>
             </div>
           )}
@@ -322,48 +323,56 @@ export default function ToolsPage() {
 
   // Main tools list view
   return (
-    <div className="min-h-screen bg-gradient-to-b from-sage-50 to-beige-50 p-4 pb-24">
-      {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="mb-6"
-      >
-        <div className="flex items-center gap-3 mb-2">
-          <div className="w-10 h-10 rounded-xl bg-sage-500 flex items-center justify-center">
-            <Brain className="w-5 h-5 text-white" />
+    <div className="min-h-screen pb-24 bg-gradient-to-b from-[var(--bg)] to-[var(--card)]">
+      <div className="max-w-2xl mx-auto px-4">
+        {/* Header */}
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="pt-6 pb-5"
+        >
+          <div className="flex items-center gap-4">
+            <motion.div 
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ type: "spring", bounce: 0.5 }}
+              className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[var(--primary)] to-[var(--primary-light)] flex items-center justify-center shadow-lg"
+            >
+              <Brain className="w-7 h-7 text-white" />
+            </motion.div>
+            <div>
+              <h1 className="text-2xl font-bold text-[var(--text)]">CBT Tools</h1>
+              <p className="text-sm text-[var(--text-muted)]">Evidence-based exercises</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-bold text-sage-800">CBT Tools</h1>
-            <p className="text-sm text-sage-500">Evidence-based exercises for your mind</p>
-          </div>
-        </div>
-      </motion.div>
+        </motion.div>
 
       {/* Quick Stats */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
-        className="grid grid-cols-2 gap-3 mb-6"
+        className="grid grid-cols-2 gap-4 mb-6"
       >
-        <Card className="bg-gradient-to-br from-sage-100 to-sage-50">
-          <CardContent className="p-4 text-center">
-            <p className="text-3xl font-bold text-sage-700">{completedExercises.length}</p>
-            <p className="text-sm text-sage-500">Exercises Done</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-gradient-to-br from-amber-100 to-amber-50">
-          <CardContent className="p-4 text-center">
-            <p className="text-3xl font-bold text-amber-700">{cbtExercises.length}</p>
-            <p className="text-sm text-amber-500">Available</p>
-          </CardContent>
-        </Card>
+        <div className="bg-gradient-to-br from-[var(--primary)]/10 to-emerald-500/10 rounded-2xl p-5 border border-[var(--border)] backdrop-blur-sm">
+          <div className="w-10 h-10 rounded-xl bg-[var(--primary)]/20 flex items-center justify-center mb-3">
+            <CheckCircle2 className="w-5 h-5 text-[var(--primary)]" />
+          </div>
+          <p className="text-3xl font-bold text-[var(--text)]">{completedExercises.length}</p>
+          <p className="text-sm text-[var(--text-muted)]">Exercises Done</p>
+        </div>
+        <div className="bg-gradient-to-br from-amber-500/10 to-orange-500/10 rounded-2xl p-5 border border-[var(--border)] backdrop-blur-sm">
+          <div className="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center mb-3">
+            <Sparkles className="w-5 h-5 text-amber-500" />
+          </div>
+          <p className="text-3xl font-bold text-[var(--text)]">{cbtExercises.length}</p>
+          <p className="text-sm text-[var(--text-muted)]">Available</p>
+        </div>
       </motion.div>
 
       {/* Exercise List */}
       <div className="space-y-3">
-        <h2 className="font-semibold text-sage-700 mb-3">Exercises</h2>
+        <h2 className="font-semibold text-[var(--text)] mb-3">Exercises</h2>
         
         {cbtExercises.map((exercise, index) => {
           const isCompleted = completedExercises.includes(exercise.id);
@@ -383,7 +392,7 @@ export default function ToolsPage() {
               <Card
                 className={cn(
                   "cursor-pointer hover:shadow-md transition-all",
-                  isCompleted && "border-sage-300 bg-sage-50/50"
+                  isCompleted && "border-[var(--primary)]/30 bg-[var(--primary)]/5"
                 )}
                 onClick={() => startExercise(exercise)}
               >
@@ -391,32 +400,32 @@ export default function ToolsPage() {
                   <div className="flex items-start gap-3">
                     <div className={cn(
                       "w-12 h-12 rounded-xl flex items-center justify-center",
-                      isCompleted ? "bg-sage-200" : "bg-sage-100"
+                      isCompleted ? "bg-[var(--primary)]/20" : "bg-[var(--bg-alt)]"
                     )}>
                       <Icon className={cn(
                         "w-6 h-6",
-                        isCompleted ? "text-sage-600" : "text-sage-500"
+                        isCompleted ? "text-[var(--primary)]" : "text-[var(--text-muted)]"
                       )} />
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
-                        <h3 className="font-medium text-sage-800">{exercise.title}</h3>
+                        <h3 className="font-medium text-[var(--text)]">{exercise.title}</h3>
                         {isCompleted && (
-                          <CheckCircle2 className="w-4 h-4 text-sage-500" />
+                          <CheckCircle2 className="w-4 h-4 text-[var(--primary)]" />
                         )}
                       </div>
-                      <p className="text-sm text-sage-500 mt-1">{exercise.description}</p>
+                      <p className="text-sm text-[var(--text-muted)] mt-1">{exercise.description}</p>
                       <div className="flex items-center gap-3 mt-2">
-                        <span className="flex items-center gap-1 text-xs text-sage-400">
+                        <span className="flex items-center gap-1 text-xs text-[var(--text-light)]">
                           <Clock className="w-3 h-3" />
                           {exercise.duration} min
                         </span>
-                        <span className="text-xs text-sage-400">
+                        <span className="text-xs text-[var(--text-light)]">
                           {exercise.steps.length} steps
                         </span>
                       </div>
                     </div>
-                    <ChevronRight className="w-5 h-5 text-sage-300" />
+                    <ChevronRight className="w-5 h-5 text-[var(--text-light)]" />
                   </div>
                 </CardContent>
               </Card>
@@ -432,13 +441,13 @@ export default function ToolsPage() {
         transition={{ delay: 0.5 }}
         className="mt-6"
       >
-        <Card className="bg-gradient-to-r from-purple-50 to-pink-50 border-purple-100">
+        <Card className="bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/30 dark:to-pink-950/30 border-purple-100 dark:border-purple-900">
           <CardContent className="p-4">
             <div className="flex items-start gap-3">
-              <BookOpen className="w-5 h-5 text-purple-500 mt-0.5" />
+              <BookOpen className="w-5 h-5 text-purple-500 dark:text-purple-400 mt-0.5" />
               <div>
-                <h4 className="font-medium text-purple-800">What is CBT?</h4>
-                <p className="text-sm text-purple-600 mt-1">
+                <h4 className="font-medium text-purple-800 dark:text-purple-300">What is CBT?</h4>
+                <p className="text-sm text-purple-600 dark:text-purple-400 mt-1">
                   Cognitive Behavioral Therapy helps you identify and change negative thought patterns. 
                   These exercises are based on proven techniques used by therapists worldwide.
                 </p>
@@ -447,6 +456,7 @@ export default function ToolsPage() {
           </CardContent>
         </Card>
       </motion.div>
+      </div>
     </div>
   );
 }
